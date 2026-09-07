@@ -5,6 +5,7 @@
 //	gowl lint    [-disable rules] [-fail-on severity] [-json] file.ofn
 //	gowl diff    [-summary] [-json] old.ofn new.ofn
 //	gowl profile [-v] [-json] file.ofn
+//	gowl classify [-axioms] [-explain "sub super"] [-json] file.ofn
 //	gowl fmt     [-w] [-canonical] file.ofn
 //	gowl stats   [-json] file.ofn
 //
@@ -53,6 +54,8 @@ func run(args []string) int {
 		return cmdDiff(args[1:])
 	case "profile":
 		return cmdProfile(args[1:])
+	case "classify":
+		return cmdClassify(args[1:])
 	case "fmt":
 		return cmdFmt(args[1:])
 	case "stats":
@@ -73,8 +76,12 @@ func usage() {
   gowl lint    [-disable rules] [-fail-on severity] [-json] file.ofn
   gowl diff    [-summary] [-exit-code] [-json] old.ofn new.ofn
   gowl profile [-v] [-json] file.ofn
+  gowl classify [-axioms] [-explain "sub super"] [-unsatisfiable] [-json] file.ofn
   gowl fmt     [-w] [-canonical] file.ofn
   gowl stats   [-json] file.ofn
+
+classify runs the OWL 2 EL reasoner: it infers the class hierarchy, finds
+classes that cannot have instances, and explains why a subsumption holds.
 
 Every command except fmt takes -json for machine-readable output.
 Run "gowl <command> -h" for the flags of one command.

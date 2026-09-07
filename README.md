@@ -239,6 +239,108 @@ XSD datatypes are noise in a term menu — but they always pass `Validate`.
 A `Vocabulary` is a snapshot: it does not track later edits to the ontology,
 and is safe to share across goroutines for reading.
 
+## Reasoning
+
+`el.Classify` runs an OWL 2 EL classifier: it works out the class hierarchy the
+axioms *entail*, not just the one they state. Everything else in this package
+reports what is asserted; this is the part that reasons.
+
+```go
+c := el.Classify(o)
+
+c.IsSubsumedBy(margherita, cheesyPizza)  // entailed, even if never asserted
+c.SuperClassesOf(margherita)             // everything above it
+c.DirectSuperClassesOf(margherita)       // the taxonomy, transitively reduced
+c.EquivalentClassesOf(x)
+c.UnsatisfiableClasses()                 // classes that cannot have instances
+c.IsCoherent()                           // ...and whether there are any
+c.InferredAxioms()                       // the result as ontology axioms
+c.Explain(margherita, cheesyPizza)       // the axioms behind an entailment
+c.Unsupported()                          // what it could not use
+```
+
+The classic case: nothing says a Margherita is a cheesy pizza, but it is.
+
+```
+$ gowl classify -explain ":Margherita :CheesyPizza" pizza.ofn
+:Margherita ⊑ :CheesyPizza follows from:
+  EquivalentClasses(:CheesyPizza ObjectIntersectionOf(:Pizza ObjectSomeValuesFrom(:hasTopping :CheeseTopping)))
+  SubClassOf(:Margherita :Pizza)
+  SubClassOf(:Margherita ObjectSomeValuesFrom(:hasTopping :Mozzarella))
+  SubClassOf(:Mozzarella :CheeseTopping)
+```
+
+### How it works
+
+Normalize every axiom into one of four shapes, then saturate a set of derived
+facts with seven completion rules until nothing new appears - the algorithm of
+Baader, Brandt and Lutz, the family ELK belongs to. Saturation is polynomial
+and monotone: no tableau, no backtracking, no search. That is why EL scales to
+ontologies the size of SNOMED when full OWL 2 DL does not, and it is why most
+large biomedical ontologies are written in EL on purpose.
+
+### What it covers, and what it refuses
+
+Class expressions: named classes, `owl:Thing`, `owl:Nothing`,
+`ObjectIntersectionOf`, `ObjectSomeValuesFrom`. Axioms: `SubClassOf`,
+`EquivalentClasses`, `DisjointClasses`, `ObjectPropertyDomain`,
+`SubObjectPropertyOf`, `EquivalentObjectProperties`,
+`TransitiveObjectProperty` and property chains.
+
+Everything else - nominals, `ObjectHasSelf`, data properties, property
+**ranges**, keys, and every non-EL constructor - is listed by `Unsupported()`
+rather than dropped in silence, because an axiom skipped quietly makes a
+classification look complete when it is not:
+
+```
+not classified (1 axiom outside OWL 2 EL)
+  ObjectPropertyRange(:hasTopping :Topping)
+
+note: axioms outside OWL 2 EL were skipped, so a subsumption that is not
+reported may still be entailed
+```
+
+Results are always **sound** - what it derives is entailed. Skipping axioms
+costs **completeness**, so when `Unsupported()` is non-empty, a subsumption it
+does not report is not proof that the subsumption fails. Individuals are not
+classified: this is a TBox reasoner.
+
+### Explanations
+
+`Explain` returns the axioms behind an entailment. Provenance is recorded as
+each fact is derived rather than reconstructed afterwards, which is the only
+practical way to get it - running a saturation backwards is a different and
+much harder problem.
+
+It is the support of the derivation actually found, **not a minimal
+justification**: it entails the subsumption, but a smaller set might too. The
+test suite checks the guarantee it does make - reclassifying an ontology built
+from just those axioms reproduces the subsumption.
+
+Recording provenance costs roughly 3.8x the time and 2.9x the memory (50 ms vs
+13 ms on a synthetic 2,000-class ontology), so `el.WithoutExplanations()` turns
+it off when classification is all you need.
+
+### Trusting it
+
+A reasoner that passes hand-worked examples can still be wrong, so the tests
+also check properties that must hold for every ontology: reflexivity,
+transitivity, agreement between `SuperClassesOf` and `SubClassesOf`, that every
+asserted subsumption is entailed, that adding an axiom never removes an
+entailment, and that every explanation re-entails what it explains. These run
+over the corpus fixtures and over 40 generated ontologies, with a guard that
+the batch infers something beyond what it was told, so the properties cannot
+pass vacuously.
+
+Rough shape at scale, from `go test ./el -bench .` on one machine with
+synthetic data - useful for the trend, not as absolutes:
+
+| Classes | Time | Memory |
+|---|---|---|
+| 500 | 9.9 ms | 1.9 MB |
+| 2,000 | 50 ms | 8.1 MB |
+| 8,000 | 187 ms | 55 MB |
+
 ## The `gowl` command
 
 ```bash
@@ -249,9 +351,15 @@ go build ./cmd/gowl
 gowl lint    [-disable rules] [-fail-on severity] [-list] [-json] file.ofn
 gowl diff    [-summary] [-exit-code] [-json] old.ofn new.ofn
 gowl profile [-v] [-json] file.ofn
+gowl classify [-axioms] [-explain "sub super"] [-unsatisfiable] [-fail-on-incoherent] [-json] file.ofn
 gowl fmt     [-w] [-canonical] file.ofn
 gowl stats   [-json] file.ofn
 ```
+
+`classify` runs the EL reasoner. `-axioms` writes the inferred taxonomy as an
+ontology document, `-explain` justifies one subsumption, and
+`-fail-on-incoherent` exits 1 when a class cannot have instances - which is the
+form to put in CI.
 
 Exit status is 0 on success, 1 when a check fails (lint findings at or above
 `-fail-on`, or a non-empty diff under `-exit-code`), and 2 on a usage or parse
@@ -376,12 +484,13 @@ Not yet:
 
 - **Other serializations.** No Turtle, RDF/XML, OWL/XML or Manchester syntax;
   functional syntax only.
-- **Reasoning.** No classification, satisfiability or entailment. Every query
-  and rule reports what is asserted.
+- **Reasoning beyond EL.** The classifier covers OWL 2 EL; there is no DL
+  reasoning, no ABox reasoning, and no minimal justifications. See
+  [Reasoning](#reasoning) for what it covers and what it reports as
+  unsupported. Outside the reasoner, every query and lint rule still reports
+  only what is asserted.
 - **Full DL profile validation.** See Profiles above for exactly what is covered.
 - **N-ary data ranges.** `DataSomeValuesFrom` takes a single data property.
-- **Profile validation.** Nothing checks whether an ontology stays inside OWL 2
-  DL, EL, QL or RL.
 
 ## Layout
 
@@ -402,6 +511,9 @@ Not yet:
 | `owl/diff.go` | ontology diffing |
 | `owl/profile.go` | OWL 2 profile checking |
 | `owl/vocabulary.go` | closed vocabularies: `Prompt`, `Resolve`, `Validate` |
+| `el/normalize.go` | rewriting axioms into EL normal form |
+| `el/classify.go` | the completion rules and saturation |
+| `el/query.go` | subsumption queries, taxonomy, explanations |
 | `lint/` | the lint rule engine and built-in rules |
 | `cmd/gowl/` | the command-line tool |
 | `cmd/gowl/json.go` | the `-json` document shapes |

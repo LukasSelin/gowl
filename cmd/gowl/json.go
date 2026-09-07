@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 
+	"gowl/el"
 	"gowl/lint"
 	"gowl/owl"
 )
@@ -220,6 +221,74 @@ func iriStrings(iris []owl.IRI) []string {
 	out := make([]string, 0, len(iris))
 	for _, i := range iris {
 		out = append(out, string(i))
+	}
+	return out
+}
+
+// --- classify ---------------------------------------------------------------
+
+type classifyDoc struct {
+	File string `json:"file"`
+	// Consistent is false only when the axioms force owl:Thing to be empty.
+	Consistent bool `json:"consistent"`
+	// Coherent is false when some named class cannot have instances.
+	Coherent           bool     `json:"coherent"`
+	Classes            int      `json:"classes"`
+	InferredAxiomCount int      `json:"inferred_axiom_count"`
+	Unsatisfiable      []string `json:"unsatisfiable"`
+	// Unsupported lists the axioms outside OWL 2 EL that were skipped. When it
+	// is non-empty the classification is sound but may be incomplete.
+	Unsupported []string `json:"unsupported"`
+	Notes       []string `json:"notes"`
+	// InferredAxioms is populated only under -axioms.
+	InferredAxioms []string `json:"inferred_axioms,omitempty"`
+}
+
+func classifyJSON(file string, o *owl.Ontology, c *el.Classification, withAxioms, unsatOnly bool) classifyDoc {
+	doc := classifyDoc{
+		File:               file,
+		Consistent:         c.IsConsistent(),
+		Coherent:           c.IsCoherent(),
+		Classes:            len(c.Classes()),
+		InferredAxiomCount: len(c.InferredAxioms()),
+		Unsatisfiable:      renderClasses(o, c.UnsatisfiableClasses()),
+		Unsupported:        renderAxioms(o, c.Unsupported()),
+		Notes:              []string{},
+	}
+	if len(doc.Unsupported) > 0 {
+		doc.Notes = append(doc.Notes, incompleteNote)
+	}
+	if withAxioms && !unsatOnly {
+		doc.InferredAxioms = renderAxioms(o, c.InferredAxioms())
+	}
+	return doc
+}
+
+type explainDoc struct {
+	Sub   string `json:"sub"`
+	Super string `json:"super"`
+	// Entailed reports whether the subsumption holds at all.
+	Entailed bool `json:"entailed"`
+	// Axioms is the support of the derivation found, not a minimal
+	// justification: it entails the subsumption, but a smaller set may too.
+	Axioms []string `json:"axioms"`
+	Notes  []string `json:"notes"`
+}
+
+func explainJSON(o *owl.Ontology, sub, super owl.Class, entailed bool, why []owl.Axiom) explainDoc {
+	return explainDoc{
+		Sub:      string(sub),
+		Super:    string(super),
+		Entailed: entailed,
+		Axioms:   renderAxioms(o, why),
+		Notes:    []string{"the axioms are the support of one derivation, not a minimal justification"},
+	}
+}
+
+func renderClasses(o *owl.Ontology, classes []owl.Class) []string {
+	out := make([]string, 0, len(classes))
+	for _, cl := range classes {
+		out = append(out, string(cl))
 	}
 	return out
 }
