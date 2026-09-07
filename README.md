@@ -111,6 +111,44 @@ These queries report what is **asserted**, not what is **entailed**. There is no
 reasoner here: `AncestorsOf` closes over asserted `SubClassOf` axioms between
 named classes and stops there.
 
+They are all backed by an index that the ontology builds on first use and
+discards on the next mutation, so a burst of queries costs one pass rather than
+one scan each. `owl.NewIndex(o)` returns a standalone snapshot if you want to
+hold one explicitly — useful when reading concurrently, since a snapshot never
+rebuilds itself.
+
+Because a stale index would be invisible, `Axioms()` returns a **copy**. To work
+with the axioms without paying for that:
+
+```go
+for ax := range o.All() { ... }     // iterate, no copy
+o.Rewrite(owl.CanonicalAxiom)       // transform in place, invalidates the index
+o.Sort()                            // stable ordering, invalidates the index
+```
+
+### Scale
+
+Indexing turns the hierarchy closures from quadratic into linear in the part of
+the graph they reach. On a synthetic ontology of 5,000 classes (~21,000 axioms),
+comparing the previous scanning implementation against the index:
+
+| Query | Scanning | Indexed |
+|---|---|---|
+| `Signature` | 6.9 ms | 2 ns |
+| `SuperClassesOf` | 96 µs | 16 ns |
+| `Label` | 129 µs | 51 ns |
+| `AncestorsOf` | 660 µs | 1.3 µs |
+| `DescendantsOf` | 441 ms | 1.7 ms |
+
+Building the index costs about 18 ms at that size and is the price of the first
+query, so a single lookup on a large ontology is now *slower* than a scan would
+have been; anything that asks more than a few questions wins immediately. End to
+end on an 84,000-axiom, 3.8 MB document, including parsing: `gowl lint` 0.42 s,
+`gowl stats` 0.66 s, `gowl diff` 0.65 s.
+
+Numbers are from `go test ./owl -bench .` on one machine with synthetic data —
+useful for the shape of the change, not as absolutes.
+
 ## Reading and writing functional syntax
 
 `owl.Functional(x)` renders any construct in OWL 2 Functional-Style Syntax with
@@ -267,8 +305,6 @@ Not yet:
 - **Reasoning.** No classification, satisfiability or entailment. Every query
   and rule reports what is asserted.
 - **Full DL profile validation.** See Profiles above for exactly what is covered.
-- **Indexes.** Queries are linear scans, and the hierarchy closures are
-  quadratic. Fine for thousands of axioms, not for hundreds of thousands.
 - **N-ary data ranges.** `DataSomeValuesFrom` takes a single data property.
 - **Profile validation.** Nothing checks whether an ontology stays inside OWL 2
   DL, EL, QL or RL.
@@ -283,6 +319,7 @@ Not yet:
 | `owl/expression.go` | class expressions, property expressions, data ranges, shorthands |
 | `owl/axiom.go` | every axiom type |
 | `owl/ontology.go` | the `Ontology` container and its queries |
+| `owl/index.go` | the query index behind those queries |
 | `owl/builder.go` | the fluent `Define*` layer |
 | `owl/render.go` | functional-syntax rendering and `Equal` |
 | `owl/lex.go` | functional-syntax tokenizer |
@@ -292,8 +329,16 @@ Not yet:
 | `owl/profile.go` | OWL 2 profile checking |
 | `lint/` | the lint rule engine and built-in rules |
 | `cmd/gowl/` | the command-line tool |
+| `owl/testdata/` | corpus fixtures and their golden renderings |
 | `owl/walk.go` | entity traversal, `Signature`, `References` |
 
 ```bash
-go test ./...
+go test ./...                                  # all tests
+go test ./owl -bench . -benchtime 100x         # benchmarks
+go test ./owl -run TestGoldenRoundTrip -update # regenerate golden files
+go test ./owl -fuzz FuzzParseFunctional        # fuzz the parser
 ```
+
+`owl/testdata` holds loosely formatted fixtures next to their golden renderings,
+so the tests pin both that the parser tolerates real-world formatting and that
+the renderer's output does not drift.

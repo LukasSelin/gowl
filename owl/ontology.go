@@ -1,6 +1,9 @@
 package owl
 
-import "sort"
+import (
+	"iter"
+	"sort"
+)
 
 // Ontology is a container of axioms plus the metadata that names them: an IRI,
 // an optional version IRI, imports, ontology annotations and a prefix table.
@@ -17,6 +20,10 @@ type Ontology struct {
 
 	axioms []Axiom
 	err    error
+
+	// idx caches the index behind the query methods. Every mutation clears it;
+	// it is rebuilt on the next query.
+	idx *Index
 }
 
 // New creates an ontology. The iri may be empty for an anonymous ontology, and
@@ -97,6 +104,7 @@ func (o *Ontology) Datatype(name string) Datatype { return Datatype(o.expand(nam
 // Add appends axioms in order.
 func (o *Ontology) Add(axioms ...Axiom) *Ontology {
 	o.axioms = append(o.axioms, axioms...)
+	o.idx = nil
 	return o
 }
 
@@ -105,30 +113,68 @@ func (o *Ontology) Declare(entities ...Entity) *Ontology {
 	for _, e := range entities {
 		o.axioms = append(o.axioms, Declaration{Entity: e})
 	}
+	o.idx = nil
 	return o
 }
 
-// Axioms returns the ontology's axioms in insertion order. The slice aliases
-// internal storage; copy it before modifying.
-func (o *Ontology) Axioms() []Axiom { return o.axioms }
+// Rewrite replaces every axiom with f(axiom), in place. Use this rather than
+// mutating the slice from [Ontology.Axioms], which is a copy.
+func (o *Ontology) Rewrite(f func(Axiom) Axiom) *Ontology {
+	for i, ax := range o.axioms {
+		o.axioms[i] = f(ax)
+	}
+	o.idx = nil
+	return o
+}
+
+// Sort orders the ontology's axioms by their rendering, for stable output.
+func (o *Ontology) Sort() *Ontology {
+	SortAxioms(o.axioms)
+	o.idx = nil
+	return o
+}
+
+// Axioms returns a copy of the ontology's axioms in insertion order. It is a
+// copy so that mutating it cannot silently invalidate the query index; use
+// [Ontology.All] to iterate without allocating, and [Ontology.Rewrite] to
+// change axioms in place.
+func (o *Ontology) Axioms() []Axiom {
+	out := make([]Axiom, len(o.axioms))
+	copy(out, o.axioms)
+	return out
+}
+
+// All iterates the ontology's axioms in insertion order without copying.
+func (o *Ontology) All() iter.Seq[Axiom] {
+	return func(yield func(Axiom) bool) {
+		for _, ax := range o.axioms {
+			if !yield(ax) {
+				return
+			}
+		}
+	}
+}
 
 // Len returns the number of axioms.
 func (o *Ontology) Len() int { return len(o.axioms) }
+
+// Index returns the ontology's query index, building it if needed. The result
+// is invalidated by the next mutation, so hold it only for a burst of queries.
+func (o *Ontology) Index() *Index {
+	if o.idx == nil {
+		o.idx = NewIndex(o)
+	}
+	return o.idx
+}
 
 // --- Queries ----------------------------------------------------------------
 
 // Signature returns every distinct entity referenced anywhere in the ontology,
 // sorted by kind then IRI.
-func (o *Ontology) Signature() []Entity {
-	seen := make(map[Entity]bool)
-	for _, ax := range o.axioms {
-		Walk(ax, func(e Entity) { seen[e] = true })
-	}
-	for _, a := range o.Annotations {
-		Walk(a, func(e Entity) { seen[e] = true })
-	}
-	return sortedEntities(seen)
-}
+func (o *Ontology) Signature() []Entity { return o.Index().Signature() }
+
+// IsDeclared reports whether the ontology declares e.
+func (o *Ontology) IsDeclared(e Entity) bool { return o.Index().IsDeclared(e) }
 
 // Classes returns the named classes in the signature, sorted by IRI.
 func (o *Ontology) Classes() []Class { return entitiesOfKind[Class](o) }
@@ -154,7 +200,7 @@ func (o *Ontology) Datatypes() []Datatype { return entitiesOfKind[Datatype](o) }
 
 func entitiesOfKind[T Entity](o *Ontology) []T {
 	var out []T
-	for _, e := range o.Signature() {
+	for _, e := range o.Index().Signature() {
 		if t, ok := e.(T); ok {
 			out = append(out, t)
 		}
@@ -163,169 +209,43 @@ func entitiesOfKind[T Entity](o *Ontology) []T {
 }
 
 // AxiomsReferencing returns every axiom that mentions e, in insertion order.
-func (o *Ontology) AxiomsReferencing(e Entity) []Axiom {
-	var out []Axiom
-	for _, ax := range o.axioms {
-		if References(ax, e) {
-			out = append(out, ax)
-		}
-	}
-	return out
-}
+func (o *Ontology) AxiomsReferencing(e Entity) []Axiom { return o.Index().AxiomsReferencing(e) }
 
 // SuperClassesOf returns the named classes asserted directly above c by
 // SubClassOf or EquivalentClasses axioms. It performs no reasoning: only
 // asserted, named superclasses are reported.
-func (o *Ontology) SuperClassesOf(c Class) []Class {
-	seen := make(map[Class]bool)
-	for _, ax := range o.axioms {
-		switch x := Unwrap(ax).(type) {
-		case SubClassOf:
-			if sub, ok := x.Sub.(Class); ok && sub == c {
-				if super, ok := x.Super.(Class); ok {
-					seen[super] = true
-				}
-			}
-		case EquivalentClasses:
-			if containsClass(x, c) {
-				for _, ce := range x {
-					if other, ok := ce.(Class); ok && other != c {
-						seen[other] = true
-					}
-				}
-			}
-		}
-	}
-	return sortedClasses(seen)
-}
+func (o *Ontology) SuperClassesOf(c Class) []Class { return o.Index().SuperClassesOf(c) }
 
 // SubClassesOf returns the named classes asserted directly below c. Like
 // [Ontology.SuperClassesOf] it reports only asserted relationships.
-func (o *Ontology) SubClassesOf(c Class) []Class {
-	seen := make(map[Class]bool)
-	for _, ax := range o.axioms {
-		switch x := Unwrap(ax).(type) {
-		case SubClassOf:
-			if super, ok := x.Super.(Class); ok && super == c {
-				if sub, ok := x.Sub.(Class); ok {
-					seen[sub] = true
-				}
-			}
-		case EquivalentClasses:
-			if containsClass(x, c) {
-				for _, ce := range x {
-					if other, ok := ce.(Class); ok && other != c {
-						seen[other] = true
-					}
-				}
-			}
-		}
-	}
-	return sortedClasses(seen)
-}
+func (o *Ontology) SubClassesOf(c Class) []Class { return o.Index().SubClassesOf(c) }
 
 // AncestorsOf returns the transitive closure of [Ontology.SuperClassesOf],
 // excluding c itself. Cycles are handled; still no reasoning.
-func (o *Ontology) AncestorsOf(c Class) []Class {
-	seen := make(map[Class]bool)
-	var visit func(Class)
-	visit = func(cur Class) {
-		for _, super := range o.SuperClassesOf(cur) {
-			if super == c || seen[super] {
-				continue
-			}
-			seen[super] = true
-			visit(super)
-		}
-	}
-	visit(c)
-	return sortedClasses(seen)
-}
+func (o *Ontology) AncestorsOf(c Class) []Class { return o.Index().AncestorsOf(c) }
 
 // DescendantsOf returns the transitive closure of [Ontology.SubClassesOf],
 // excluding c itself.
-func (o *Ontology) DescendantsOf(c Class) []Class {
-	seen := make(map[Class]bool)
-	var visit func(Class)
-	visit = func(cur Class) {
-		for _, sub := range o.SubClassesOf(cur) {
-			if sub == c || seen[sub] {
-				continue
-			}
-			seen[sub] = true
-			visit(sub)
-		}
-	}
-	visit(c)
-	return sortedClasses(seen)
-}
+func (o *Ontology) DescendantsOf(c Class) []Class { return o.Index().DescendantsOf(c) }
 
 // TypesOf returns the class expressions asserted for an individual.
-func (o *Ontology) TypesOf(i Individual) []ClassExpression {
-	var out []ClassExpression
-	for _, ax := range o.axioms {
-		if a, ok := Unwrap(ax).(ClassAssertion); ok && a.Individual == i {
-			out = append(out, a.Class)
-		}
-	}
-	return out
-}
+func (o *Ontology) TypesOf(i Individual) []ClassExpression { return o.Index().TypesOf(i) }
 
 // InstancesOf returns the individuals directly asserted to be instances of c.
-func (o *Ontology) InstancesOf(c ClassExpression) []Individual {
-	var out []Individual
-	for _, ax := range o.axioms {
-		if a, ok := Unwrap(ax).(ClassAssertion); ok && Equal(a.Class, c) {
-			out = append(out, a.Individual)
-		}
-	}
-	return out
-}
+func (o *Ontology) InstancesOf(c ClassExpression) []Individual { return o.Index().InstancesOf(c) }
 
 // ObjectValues returns the individuals asserted as objects of p for subject i.
 func (o *Ontology) ObjectValues(i Individual, p ObjectPropertyExpression) []Individual {
-	var out []Individual
-	for _, ax := range o.axioms {
-		if a, ok := Unwrap(ax).(ObjectPropertyAssertion); ok && a.Subject == i && Equal(a.Property, p) {
-			out = append(out, a.Object)
-		}
-	}
-	return out
+	return o.Index().ObjectValues(i, p)
 }
 
 // DataValues returns the literals asserted as values of p for subject i.
 func (o *Ontology) DataValues(i Individual, p DataPropertyExpression) []Literal {
-	var out []Literal
-	for _, ax := range o.axioms {
-		if a, ok := Unwrap(ax).(DataPropertyAssertion); ok && a.Subject == i && Equal(a.Property, p) {
-			out = append(out, a.Value)
-		}
-	}
-	return out
+	return o.Index().DataValues(i, p)
 }
 
 // Label returns the first rdfs:label asserted for e, or "" if none.
-func (o *Ontology) Label(e Entity) string {
-	for _, ax := range o.axioms {
-		a, ok := Unwrap(ax).(AnnotationAssertion)
-		if !ok || a.Property != RDFSLabel || a.Subject != e.IRI() {
-			continue
-		}
-		if l, ok := a.Value.(Literal); ok {
-			return l.Value
-		}
-	}
-	return ""
-}
-
-func containsClass(ces []ClassExpression, c Class) bool {
-	for _, ce := range ces {
-		if other, ok := ce.(Class); ok && other == c {
-			return true
-		}
-	}
-	return false
-}
+func (o *Ontology) Label(e Entity) string { return o.Index().Label(e) }
 
 func sortedClasses(seen map[Class]bool) []Class {
 	out := make([]Class, 0, len(seen))
