@@ -111,7 +111,7 @@ These queries report what is **asserted**, not what is **entailed**. There is no
 reasoner here: `AncestorsOf` closes over asserted `SubClassOf` axioms between
 named classes and stops there.
 
-## Rendering
+## Reading and writing functional syntax
 
 `owl.Functional(x)` renders any construct in OWL 2 Functional-Style Syntax with
 full IRIs. `o.Functional()` renders a whole document, abbreviating IRIs with the
@@ -121,20 +121,52 @@ ontology's prefixes; `o.WriteFunctional(w)` streams it to an `io.Writer`.
 (so `fmt.Println(pizza)` is readable), while expressions, axioms and ontologies
 print as functional syntax.
 
+Parsing goes the other way, and round-trips: rendering a parsed document
+reproduces it byte for byte.
+
+```go
+o, err := owl.ParseFunctional(file)          // or ParseFunctionalString(s)
+ax, err := owl.ParseAxiom(line, o.Prefixes)  // a single axiom
+ce, err := owl.ParseClassExpression(s, nil)  // a single class expression
+```
+
+Errors carry a line number: `owl: line 3: unknown axiom Frobnicate`. The parser
+handles `#` line comments, and a failed parse returns a nil result rather than a
+half-built one. A fuzz target (`FuzzParseFunctional`) checks that malformed
+input always yields an error rather than a panic, and that anything which parses
+survives a render/re-parse cycle.
+
+Two constructs in the grammar have no home in the model, and are reported as
+errors instead of being silently dropped: n-ary `DataSomeValuesFrom` /
+`DataAllValuesFrom`, and anonymous individuals as `AnnotationAssertion`
+subjects. Annotations *on* annotations are parsed and discarded.
+
+### Axiom annotations
+
+`Annotation(...)` inside an axiom is modelled by the `Annotated` wrapper:
+
+```go
+SubClassOf(Annotation(rdfs:comment "why") :Dog :Animal)
+```
+
+parses to `owl.Annotated{Annotations: ..., Axiom: owl.SubClassOf{...}}` and
+renders back by splicing the annotations into the argument list. A wrapper
+changes an axiom's dynamic type, so code that switches on axiom types should
+call `owl.Unwrap(ax)` first — the queries on `Ontology` already do.
+
 ## What's covered
 
 All six entity kinds; the full class expression grammar; object and data
 property expressions and data ranges including `DatatypeRestriction` facets;
-and the OWL 2 axiom set — class axioms, property axioms and characteristics,
-property chains, `HasKey`, individual assertions, and annotation axioms.
+the OWL 2 axiom set — class axioms, property axioms and characteristics,
+property chains, `HasKey`, individual assertions, and annotation axioms — plus
+axiom annotations, and a reader and writer for functional syntax.
 
 Not yet:
 
-- **Parsing.** Rendering is one-way; there is no reader for Turtle, RDF/XML or
-  functional syntax.
+- **Other serializations.** No Turtle, RDF/XML, OWL/XML or Manchester syntax;
+  functional syntax only.
 - **Reasoning.** No classification, satisfiability or entailment.
-- **Axiom annotations.** `Annotation(...)` nested inside an axiom is not
-  modelled; annotate the entity with `AnnotationAssertion` instead.
 - **N-ary data ranges.** `DataSomeValuesFrom` takes a single data property.
 - **Profile validation.** Nothing checks whether an ontology stays inside OWL 2
   DL, EL, QL or RL.
@@ -151,6 +183,8 @@ Not yet:
 | `owl/ontology.go` | the `Ontology` container and its queries |
 | `owl/builder.go` | the fluent `Define*` layer |
 | `owl/render.go` | functional-syntax rendering and `Equal` |
+| `owl/lex.go` | functional-syntax tokenizer |
+| `owl/parse.go` | functional-syntax parser |
 | `owl/walk.go` | entity traversal, `Signature`, `References` |
 
 ```bash

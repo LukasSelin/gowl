@@ -3,12 +3,33 @@ package owl
 // Axiom is a statement asserted by an ontology. Axioms are values, so they can
 // be compared, copied and stored freely; slice-shaped axioms such as
 // [EquivalentClasses] are compared by rendering rather than with ==.
-//
-// Axiom annotations (Annotation(...) inside an axiom) are not yet modelled;
-// use [AnnotationAssertion] on the entity instead.
 type Axiom interface {
 	Node
 	isAxiom()
+}
+
+// Annotated attaches annotations to another axiom, as in
+//
+//	SubClassOf(Annotation(rdfs:comment "why") :A :B)
+//
+// It renders by splicing its annotations into the wrapped axiom's argument
+// list. Because a wrapper changes an axiom's dynamic type, code that switches
+// on axiom types should call [Unwrap] first; the queries on [Ontology] already
+// do.
+type Annotated struct {
+	Annotations []Annotation
+	Axiom       Axiom
+}
+
+// Unwrap returns the axiom inside any [Annotated] wrappers, or ax unchanged.
+func Unwrap(ax Axiom) Axiom {
+	for {
+		a, ok := ax.(Annotated)
+		if !ok {
+			return ax
+		}
+		ax = a.Axiom
+	}
 }
 
 // Declaration introduces an entity into the ontology's signature.
@@ -134,6 +155,7 @@ type (
 	}
 )
 
+func (Annotated) isAxiom()                       {}
 func (Declaration) isAxiom()                     {}
 func (SubClassOf) isAxiom()                      {}
 func (EquivalentClasses) isAxiom()               {}
@@ -173,6 +195,7 @@ func (SubAnnotationPropertyOf) isAxiom()         {}
 func (AnnotationPropertyDomain) isAxiom()        {}
 func (AnnotationPropertyRange) isAxiom()         {}
 
+func (x Annotated) String() string                       { return Functional(x) }
 func (x Declaration) String() string                     { return Functional(x) }
 func (x SubClassOf) String() string                      { return Functional(x) }
 func (x EquivalentClasses) String() string               { return Functional(x) }

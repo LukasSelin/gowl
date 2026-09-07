@@ -250,6 +250,23 @@ func (w *fsw) node(n Node) {
 		w.b.WriteByte(')')
 
 	// Axioms.
+	case Annotated:
+		// Annotations belong inside the wrapped axiom's argument list, so
+		// render the inner axiom and splice them in after its opening paren.
+		inner := &fsw{p: w.p}
+		inner.node(x.Axiom)
+		s := inner.b.String()
+		open := strings.IndexByte(s, '(')
+		if open < 0 || len(x.Annotations) == 0 {
+			w.b.WriteString(s)
+			return
+		}
+		w.b.WriteString(s[:open+1])
+		for _, a := range x.Annotations {
+			w.node(a)
+			w.b.WriteByte(' ')
+		}
+		w.b.WriteString(s[open+1:])
 	case Declaration:
 		w.b.WriteString("Declaration(")
 		if x.Entity == nil {

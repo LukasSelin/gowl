@@ -179,7 +179,7 @@ func (o *Ontology) AxiomsReferencing(e Entity) []Axiom {
 func (o *Ontology) SuperClassesOf(c Class) []Class {
 	seen := make(map[Class]bool)
 	for _, ax := range o.axioms {
-		switch x := ax.(type) {
+		switch x := Unwrap(ax).(type) {
 		case SubClassOf:
 			if sub, ok := x.Sub.(Class); ok && sub == c {
 				if super, ok := x.Super.(Class); ok {
@@ -204,7 +204,7 @@ func (o *Ontology) SuperClassesOf(c Class) []Class {
 func (o *Ontology) SubClassesOf(c Class) []Class {
 	seen := make(map[Class]bool)
 	for _, ax := range o.axioms {
-		switch x := ax.(type) {
+		switch x := Unwrap(ax).(type) {
 		case SubClassOf:
 			if super, ok := x.Super.(Class); ok && super == c {
 				if sub, ok := x.Sub.(Class); ok {
@@ -264,7 +264,7 @@ func (o *Ontology) DescendantsOf(c Class) []Class {
 func (o *Ontology) TypesOf(i Individual) []ClassExpression {
 	var out []ClassExpression
 	for _, ax := range o.axioms {
-		if a, ok := ax.(ClassAssertion); ok && a.Individual == i {
+		if a, ok := Unwrap(ax).(ClassAssertion); ok && a.Individual == i {
 			out = append(out, a.Class)
 		}
 	}
@@ -275,7 +275,7 @@ func (o *Ontology) TypesOf(i Individual) []ClassExpression {
 func (o *Ontology) InstancesOf(c ClassExpression) []Individual {
 	var out []Individual
 	for _, ax := range o.axioms {
-		if a, ok := ax.(ClassAssertion); ok && Equal(a.Class, c) {
+		if a, ok := Unwrap(ax).(ClassAssertion); ok && Equal(a.Class, c) {
 			out = append(out, a.Individual)
 		}
 	}
@@ -286,7 +286,7 @@ func (o *Ontology) InstancesOf(c ClassExpression) []Individual {
 func (o *Ontology) ObjectValues(i Individual, p ObjectPropertyExpression) []Individual {
 	var out []Individual
 	for _, ax := range o.axioms {
-		if a, ok := ax.(ObjectPropertyAssertion); ok && a.Subject == i && Equal(a.Property, p) {
+		if a, ok := Unwrap(ax).(ObjectPropertyAssertion); ok && a.Subject == i && Equal(a.Property, p) {
 			out = append(out, a.Object)
 		}
 	}
@@ -297,7 +297,7 @@ func (o *Ontology) ObjectValues(i Individual, p ObjectPropertyExpression) []Indi
 func (o *Ontology) DataValues(i Individual, p DataPropertyExpression) []Literal {
 	var out []Literal
 	for _, ax := range o.axioms {
-		if a, ok := ax.(DataPropertyAssertion); ok && a.Subject == i && Equal(a.Property, p) {
+		if a, ok := Unwrap(ax).(DataPropertyAssertion); ok && a.Subject == i && Equal(a.Property, p) {
 			out = append(out, a.Value)
 		}
 	}
@@ -307,7 +307,7 @@ func (o *Ontology) DataValues(i Individual, p DataPropertyExpression) []Literal 
 // Label returns the first rdfs:label asserted for e, or "" if none.
 func (o *Ontology) Label(e Entity) string {
 	for _, ax := range o.axioms {
-		a, ok := ax.(AnnotationAssertion)
+		a, ok := Unwrap(ax).(AnnotationAssertion)
 		if !ok || a.Property != RDFSLabel || a.Subject != e.IRI() {
 			continue
 		}

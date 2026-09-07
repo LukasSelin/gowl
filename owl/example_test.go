@@ -81,3 +81,29 @@ func ExampleSignature() {
 	// Class http://example.org/Topping
 	// ObjectProperty http://example.org/hasTopping
 }
+
+// Parsing a functional-syntax document and querying it.
+func ExampleParseFunctionalString() {
+	src := `Prefix(:=<http://example.org/animals#>)
+Ontology(<http://example.org/animals>
+    Declaration(Class(:Dog))
+    SubClassOf(:Dog :Mammal)
+    SubClassOf(:Mammal :Animal)
+    ClassAssertion(:Dog :rex)
+    AnnotationAssertion(rdfs:label :Dog "Dog"@en)
+)`
+
+	o, err := owl.ParseFunctionalString(src)
+	if err != nil {
+		panic(err)
+	}
+
+	dog := o.Class(":Dog")
+	fmt.Println(o.Label(dog))
+	fmt.Println(o.AncestorsOf(dog))
+	fmt.Println(o.InstancesOf(dog))
+	// Output:
+	// Dog
+	// [http://example.org/animals#Animal http://example.org/animals#Mammal]
+	// [http://example.org/animals#rex]
+}

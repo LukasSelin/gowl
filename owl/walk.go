@@ -98,6 +98,11 @@ func Walk(n Node, yield func(Entity)) {
 		}
 
 	// Axioms.
+	case Annotated:
+		for _, a := range x.Annotations {
+			Walk(a, yield)
+		}
+		Walk(x.Axiom, yield)
 	case Declaration:
 		if x.Entity != nil {
 			yield(x.Entity)
