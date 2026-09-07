@@ -1,0 +1,9 @@
+# Normalize line endings in the repository to LF, and check them out as LF on
+# every platform. Without the eol=lf, Windows clones would get CRLF working
+# copies and gofmt/diffs would churn between platforms.
+* text=auto eol=lf
+
+# Go tooling is LF-only.
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
