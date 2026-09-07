@@ -199,16 +199,43 @@ go build ./cmd/gowl
 ```
 
 ```
-gowl lint    [-disable rules] [-fail-on severity] [-list] file.ofn
-gowl diff    [-summary] [-exit-code] old.ofn new.ofn
-gowl profile [-v] file.ofn
+gowl lint    [-disable rules] [-fail-on severity] [-list] [-json] file.ofn
+gowl diff    [-summary] [-exit-code] [-json] old.ofn new.ofn
+gowl profile [-v] [-json] file.ofn
 gowl fmt     [-w] [-canonical] file.ofn
-gowl stats   file.ofn
+gowl stats   [-json] file.ofn
 ```
 
 Exit status is 0 on success, 1 when a check fails (lint findings at or above
 `-fail-on`, or a non-empty diff under `-exit-code`), and 2 on a usage or parse
 error — so `gowl lint` and `gowl diff -exit-code` drop straight into CI.
+
+### JSON output
+
+Every command except `fmt` takes `-json` and then writes exactly one JSON object
+to stdout. `fmt` has none because its output is an ontology document, not a
+report.
+
+```bash
+gowl lint -json onto.ofn | jq -r '.findings[] | select(.severity=="error") | .message'
+gowl diff -json old.ofn new.ofn | jq '.counts'
+gowl profile -json onto.ofn | jq -r '.in_profiles[]'
+gowl stats -json onto.ofn | jq '.counts.classes'
+gowl lint -list -json | jq -r '.rules[].name'
+```
+
+Three properties make this safe to script against:
+
+- **Failures are documents too.** A parse error prints `{"error": "..."}` on
+  stdout and nothing on stderr, so a caller that reads stdout always gets
+  something parseable. Exit statuses are identical in both modes.
+- **Empty lists are `[]`, never `null`**, and `by_severity` always carries all
+  three keys — so `.summary.by_severity.error` is a number, not a null.
+- **`-json` changes the format, not the content.** `diff -summary` and
+  `profile -v` mean the same thing in both modes, and axioms are rendered with
+  the document's own prefixes rather than as expanded IRIs.
+
+The shapes live in [`cmd/gowl/json.go`](cmd/gowl/json.go).
 
 ## Linting
 
@@ -329,6 +356,7 @@ Not yet:
 | `owl/profile.go` | OWL 2 profile checking |
 | `lint/` | the lint rule engine and built-in rules |
 | `cmd/gowl/` | the command-line tool |
+| `cmd/gowl/json.go` | the `-json` document shapes |
 | `owl/testdata/` | corpus fixtures and their golden renderings |
 | `owl/walk.go` | entity traversal, `Signature`, `References` |
 
