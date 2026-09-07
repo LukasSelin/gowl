@@ -272,11 +272,7 @@ func cmdFmt(args []string) int {
 	}
 
 	if *canonical {
-		axioms := o.Axioms()
-		for i, ax := range axioms {
-			axioms[i] = owl.CanonicalAxiom(ax)
-		}
-		owl.SortAxioms(axioms)
+		o.Rewrite(owl.CanonicalAxiom).Sort()
 	}
 
 	out := o.Functional()

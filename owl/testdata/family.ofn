@@ -1,0 +1,29 @@
+# Property chains, characteristics and annotated axioms.
+Prefix(:=<http://example.org/family#>)
+Ontology(<http://example.org/family>
+  Declaration(Class(:Person))
+  Declaration(ObjectProperty(:hasParent))
+  Declaration(ObjectProperty(:hasBrother))
+  Declaration(ObjectProperty(:hasUncle))
+  Declaration(ObjectProperty(:hasAncestor))
+  Declaration(ObjectProperty(:hasDescendant))
+  Declaration(NamedIndividual(:alice))
+  Declaration(NamedIndividual(:bob))
+
+  SubObjectPropertyOf(ObjectPropertyChain(:hasParent :hasBrother) :hasUncle)
+  SubObjectPropertyOf(:hasParent :hasAncestor)
+  TransitiveObjectProperty(:hasAncestor)
+  InverseObjectProperties(:hasAncestor :hasDescendant)
+  IrreflexiveObjectProperty(:hasParent)
+  AsymmetricObjectProperty(:hasParent)
+
+  ObjectPropertyDomain(:hasParent :Person)
+  ObjectPropertyRange(:hasParent :Person)
+
+  SubClassOf(Annotation(rdfs:comment "everyone has two parents") :Person ObjectExactCardinality(2 :hasParent :Person))
+  ClassAssertion(:Person :alice)
+  ClassAssertion(:Person :bob)
+  ObjectPropertyAssertion(:hasParent :alice :bob)
+  NegativeObjectPropertyAssertion(:hasParent :bob :alice)
+  DifferentIndividuals(:alice :bob)
+)

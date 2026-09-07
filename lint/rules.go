@@ -63,17 +63,6 @@ func Default() []Rule {
 	}
 }
 
-// declaredEntities collects the entities the ontology declares.
-func declaredEntities(o *owl.Ontology) map[owl.Entity]bool {
-	declared := make(map[owl.Entity]bool)
-	for _, ax := range o.Axioms() {
-		if d, ok := owl.Unwrap(ax).(owl.Declaration); ok && d.Entity != nil {
-			declared[d.Entity] = true
-		}
-	}
-	return declared
-}
-
 // builtin reports whether an entity comes from the OWL, RDF, RDFS or XSD
 // vocabulary, which no ontology is expected to declare.
 func builtin(e owl.Entity) bool {
@@ -87,10 +76,9 @@ func builtin(e owl.Entity) bool {
 }
 
 func undeclaredEntity(o *owl.Ontology) []Finding {
-	declared := declaredEntities(o)
 	var out []Finding
 	for _, e := range o.Signature() {
-		if declared[e] || builtin(e) {
+		if o.IsDeclared(e) || builtin(e) {
 			continue
 		}
 		out = append(out, Finding{
@@ -149,7 +137,7 @@ func missingLabel(o *owl.Ontology) []Finding {
 
 func deprecatedReference(o *owl.Ontology) []Finding {
 	deprecated := make(map[owl.IRI]bool)
-	for _, ax := range o.Axioms() {
+	for ax := range o.All() {
 		a, ok := owl.Unwrap(ax).(owl.AnnotationAssertion)
 		if !ok || a.Property != owl.OWLDeprecated {
 			continue
@@ -163,7 +151,7 @@ func deprecatedReference(o *owl.Ontology) []Finding {
 	}
 
 	var out []Finding
-	for _, ax := range o.Axioms() {
+	for ax := range o.All() {
 		// A declaration or an annotation *about* a deprecated term is how the
 		// term stays documented; only other references are suspect.
 		switch inner := owl.Unwrap(ax).(type) {
@@ -190,7 +178,7 @@ func deprecatedReference(o *owl.Ontology) []Finding {
 func duplicateAxiom(o *owl.Ontology) []Finding {
 	seen := make(map[string]bool)
 	var out []Finding
-	for _, ax := range o.Axioms() {
+	for ax := range o.All() {
 		key := owl.CanonicalKey(ax)
 		if seen[key] {
 			out = append(out, Finding{
@@ -209,7 +197,7 @@ func trivialAxiom(o *owl.Ontology) []Finding {
 	add := func(ax owl.Axiom, why string) {
 		out = append(out, Finding{Axiom: ax, Message: why + ": " + o.Render(ax)})
 	}
-	for _, ax := range o.Axioms() {
+	for ax := range o.All() {
 		switch x := owl.Unwrap(ax).(type) {
 		case owl.SubClassOf:
 			if owl.Equal(x.Sub, x.Super) {
@@ -236,7 +224,7 @@ func trivialAxiom(o *owl.Ontology) []Finding {
 // makes every class on it equivalent, which is almost never intended.
 func subclassCycle(o *owl.Ontology) []Finding {
 	supers := make(map[owl.Class][]owl.Class)
-	for _, ax := range o.Axioms() {
+	for ax := range o.All() {
 		x, ok := owl.Unwrap(ax).(owl.SubClassOf)
 		if !ok {
 			continue
@@ -312,7 +300,7 @@ func orphanClass(o *owl.Ontology) []Finding {
 	// A class is anchored if it has an asserted superclass, an equivalence, or
 	// participates in a disjoint union.
 	anchored := make(map[owl.Class]bool)
-	for _, ax := range o.Axioms() {
+	for ax := range o.All() {
 		switch x := owl.Unwrap(ax).(type) {
 		case owl.SubClassOf:
 			if sub, ok := x.Sub.(owl.Class); ok {
