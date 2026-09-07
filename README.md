@@ -192,6 +192,53 @@ renders back by splicing the annotations into the argument list. A wrapper
 changes an axiom's dynamic type, so code that switches on axiom types should
 call `owl.Unwrap(ax)` first — the queries on `Ontology` already do.
 
+## Closed vocabularies
+
+`Vocabulary` turns an ontology's signature into the set of terms something else
+is allowed to use — a language model choosing among them, a completion UI, a
+validator for axioms that arrive from outside.
+
+```go
+v := owl.NewVocabulary(o)
+
+fmt.Println(v.Prompt())          // a listing to put in front of a model
+e, err := v.Resolve("has topping")  // a label, CURIE or IRI -> the entity
+ax, err := v.ParseAxiom(line)    // parse, then reject any invented term
+err = v.Validate(someAxiom)      // *owl.UnknownTermsError names the offenders
+```
+
+`Prompt` groups terms by kind and declares only the prefixes the listing
+actually uses:
+
+```
+Prefixes
+  : http://example.org/pizza#
+
+Classes (2)
+  :Pizza — Pizza — a pizza with at least one topping
+  :Topping — Topping
+
+Object properties (1)
+  :hasTopping — has topping
+```
+
+`Resolve` accepts a compact name, a full or `<bracketed>` IRI, or an
+`rdfs:label` matched without regard to case, and near misses come back as a
+suggestion rather than a bare failure:
+
+```
+owl: "has_topping" is not in the vocabulary (did you mean ":hasTopping"?)
+```
+
+Ambiguity is reported, never guessed: a punned IRI or a shared label makes
+`Lookup` fail and `Resolve` say why, with `LookupKind` available to break the
+tie. Builtins are excluded from the listing by default — `owl:Thing` and the
+XSD datatypes are noise in a term menu — but they always pass `Validate`.
+`WithBuiltins`, `DeclaredOnly` and `OnlyKinds` adjust what is collected.
+
+A `Vocabulary` is a snapshot: it does not track later edits to the ontology,
+and is safe to share across goroutines for reading.
+
 ## The `gowl` command
 
 ```bash
@@ -354,6 +401,7 @@ Not yet:
 | `owl/canon.go` | canonicalization for comparison |
 | `owl/diff.go` | ontology diffing |
 | `owl/profile.go` | OWL 2 profile checking |
+| `owl/vocabulary.go` | closed vocabularies: `Prompt`, `Resolve`, `Validate` |
 | `lint/` | the lint rule engine and built-in rules |
 | `cmd/gowl/` | the command-line tool |
 | `cmd/gowl/json.go` | the `-json` document shapes |

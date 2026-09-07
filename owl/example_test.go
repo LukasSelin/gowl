@@ -107,3 +107,53 @@ Ontology(<http://example.org/animals>
 	// [http://example.org/animals#Animal http://example.org/animals#Mammal]
 	// [http://example.org/animals#rex]
 }
+
+// Using a vocabulary to constrain and validate axioms that arrive from
+// somewhere untrusted — a language model, a form, an imported patch.
+func ExampleVocabulary() {
+	src := `Prefix(:=<http://example.org/pizza#>)
+Ontology(<http://example.org/pizza>
+    Declaration(Class(:Pizza))
+    Declaration(Class(:Topping))
+    Declaration(ObjectProperty(:hasTopping))
+    AnnotationAssertion(rdfs:label :Pizza "Pizza"@en)
+    AnnotationAssertion(rdfs:label :Topping "Topping"@en)
+    AnnotationAssertion(rdfs:label :hasTopping "has topping"@en)
+)`
+
+	o, err := owl.ParseFunctionalString(src)
+	if err != nil {
+		panic(err)
+	}
+	v := owl.NewVocabulary(o)
+
+	// The listing to hand to whatever has to choose among the terms.
+	fmt.Println(v.Prompt())
+
+	// A label resolves to the entity it names.
+	e, _ := v.Resolve("has topping")
+	fmt.Println(e.Kind(), e.IRI())
+
+	// An axiom that stays inside the vocabulary is accepted...
+	if _, err := v.ParseAxiom("SubClassOf(:Pizza ObjectSomeValuesFrom(:hasTopping :Topping))"); err == nil {
+		fmt.Println("accepted")
+	}
+	// ...and one that invents a term is not.
+	if _, err := v.ParseAxiom("SubClassOf(:Pizza :Calzone)"); err != nil {
+		fmt.Println(err)
+	}
+	// Output:
+	// Prefixes
+	//   : http://example.org/pizza#
+	//
+	// Classes (2)
+	//   :Pizza — Pizza
+	//   :Topping — Topping
+	//
+	// Object properties (1)
+	//   :hasTopping — has topping
+	//
+	// ObjectProperty http://example.org/pizza#hasTopping
+	// accepted
+	// owl: not in the vocabulary: Class http://example.org/pizza#Calzone
+}

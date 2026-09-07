@@ -65,15 +65,7 @@ func Default() []Rule {
 
 // builtin reports whether an entity comes from the OWL, RDF, RDFS or XSD
 // vocabulary, which no ontology is expected to declare.
-func builtin(e owl.Entity) bool {
-	iri := string(e.IRI())
-	for _, ns := range []owl.IRI{owl.NamespaceOWL, owl.NamespaceRDF, owl.NamespaceRDFS, owl.NamespaceXSD} {
-		if len(iri) > len(ns) && iri[:len(ns)] == string(ns) {
-			return true
-		}
-	}
-	return false
-}
+func builtin(e owl.Entity) bool { return owl.IsBuiltin(e) }
 
 func undeclaredEntity(o *owl.Ontology) []Finding {
 	var out []Finding
