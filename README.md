@@ -154,19 +154,121 @@ renders back by splicing the annotations into the argument list. A wrapper
 changes an axiom's dynamic type, so code that switches on axiom types should
 call `owl.Unwrap(ax)` first — the queries on `Ontology` already do.
 
+## The `gowl` command
+
+```bash
+go build ./cmd/gowl
+```
+
+```
+gowl lint    [-disable rules] [-fail-on severity] [-list] file.ofn
+gowl diff    [-summary] [-exit-code] old.ofn new.ofn
+gowl profile [-v] file.ofn
+gowl fmt     [-w] [-canonical] file.ofn
+gowl stats   file.ofn
+```
+
+Exit status is 0 on success, 1 when a check fails (lint findings at or above
+`-fail-on`, or a non-empty diff under `-exit-code`), and 2 on a usage or parse
+error — so `gowl lint` and `gowl diff -exit-code` drop straight into CI.
+
+## Linting
+
+`lint` checks structural policy: conventions and hygiene that hold regardless of
+what an ontology means. Nothing here reasons, so it runs on ontologies no
+reasoner could handle.
+
+| Rule | Severity | Flags |
+|---|---|---|
+| `undeclared-entity` | warning | an entity used in an axiom but never declared |
+| `punned-entity` | warning | one IRI used as more than one kind of entity |
+| `missing-label` | info | a class or property with no `rdfs:label` |
+| `deprecated-reference` | warning | an axiom referencing an `owl:deprecated` term |
+| `duplicate-axiom` | warning | the same axiom asserted twice |
+| `trivial-axiom` | warning | axioms asserting nothing, e.g. `SubClassOf(A A)` |
+| `subclass-cycle` | error | a hierarchy cycle, which silently makes its classes equivalent |
+| `orphan-class` | info | a class with no asserted superclass or equivalence |
+
+A `lint.Rule` is an ordinary value, so a project can drop the built-ins it
+disagrees with and add its own:
+
+```go
+rules := append(lint.Default(), lint.Rule{
+    Name: "namespace", Severity: lint.Error,
+    Check: func(o *owl.Ontology) []lint.Finding { ... },
+})
+findings := lint.Run(o, rules)
+```
+
+## Profiles
+
+`owl.CheckProfile(o, owl.ProfileEL)` returns every reason an ontology falls
+outside a profile; `owl.Profiles(o)` returns the profiles it is in.
+
+EL, QL and RL check the syntactic restrictions of the OWL 2 Profiles
+specification, including the positional rules — QL and RL allow different class
+expressions on the left and right of an inclusion, and the checker tracks which
+side it is on. Datatype-map restrictions are not checked.
+
+**DL is checked only partially**, and deliberately so: it covers the global
+restriction on simple properties — a property that is transitive or implied by a
+property chain may not be used in a cardinality restriction, a self restriction,
+a disjointness axiom, or a functional, inverse-functional, irreflexive or
+asymmetric assertion. That is the DL restriction that most often breaks
+reasoners in practice. Typing separation, datatype cycles and anonymous
+individual well-formedness are not checked, so a DL pass is not proof of DL
+membership. `owl.NonSimpleProperties(o)` exposes the underlying computation.
+
+## Diffing
+
+`owl.DiffOntologies(from, to)` compares two ontologies by canonical form, so
+reordering an axiom's operands, or the axioms themselves, is not a change:
+
+```
+- SubClassOf(:Child :Root)
++ SubClassOf(:Child owl:Thing)
+
+1 axiom added, 1 axiom removed, affecting 3 entities
+```
+
+A modified axiom shows up as a removal plus an addition. OWL has no notion of
+editing an axiom in place, and pairing them up would invent structure the
+documents don't have.
+
+Comparison is a multiset, so a document asserting an axiom twice differs from
+one asserting it once. `Diff.Entities()` gives the terms touched by the change,
+which is usually what a release note wants.
+
+## Canonicalization
+
+`owl.CanonicalAxiom` and `owl.CanonicalClassExpression` sort and de-duplicate
+the operands of commutative constructs, flatten nested intersections and unions,
+and collapse one-operand ones. Order is preserved where it carries meaning: the
+sides of `SubClassOf`, the links of a property chain, the subject and object of
+an assertion.
+
+The canonical form is for comparison, not storage — it is deliberately not
+round-trip faithful, so `Functional()` still renders axioms as asserted. Use
+`gowl fmt -canonical` to normalize a file on purpose.
+
 ## What's covered
 
 All six entity kinds; the full class expression grammar; object and data
 property expressions and data ranges including `DatatypeRestriction` facets;
 the OWL 2 axiom set — class axioms, property axioms and characteristics,
 property chains, `HasKey`, individual assertions, and annotation axioms — plus
-axiom annotations, and a reader and writer for functional syntax.
+axiom annotations, a reader and writer for functional syntax, canonicalization,
+diffing, profile checking, a lint rule engine, and the `gowl` command.
 
 Not yet:
 
 - **Other serializations.** No Turtle, RDF/XML, OWL/XML or Manchester syntax;
   functional syntax only.
-- **Reasoning.** No classification, satisfiability or entailment.
+- **Reasoning.** No classification, satisfiability or entailment. Every query
+  and rule reports what is asserted.
+- **Full DL profile validation.** See Profiles above for exactly what is covered.
+- **Indexes.** Queries are linear scans, and the hierarchy closures are
+  quadratic. Fine for thousands of axioms, not for hundreds of thousands.
 - **N-ary data ranges.** `DataSomeValuesFrom` takes a single data property.
 - **Profile validation.** Nothing checks whether an ontology stays inside OWL 2
   DL, EL, QL or RL.
@@ -185,6 +287,11 @@ Not yet:
 | `owl/render.go` | functional-syntax rendering and `Equal` |
 | `owl/lex.go` | functional-syntax tokenizer |
 | `owl/parse.go` | functional-syntax parser |
+| `owl/canon.go` | canonicalization for comparison |
+| `owl/diff.go` | ontology diffing |
+| `owl/profile.go` | OWL 2 profile checking |
+| `lint/` | the lint rule engine and built-in rules |
+| `cmd/gowl/` | the command-line tool |
 | `owl/walk.go` | entity traversal, `Signature`, `References` |
 
 ```bash

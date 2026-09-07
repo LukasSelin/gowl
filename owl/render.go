@@ -14,6 +14,15 @@ func Functional(n Node) string {
 	return w.b.String()
 }
 
+// Render renders a construct in functional syntax using this ontology's
+// prefixes, so IRIs come out abbreviated the way they would inside the
+// document. [Functional] is the prefix-free equivalent.
+func (o *Ontology) Render(n Node) string {
+	w := &fsw{p: o.Prefixes}
+	w.node(n)
+	return w.b.String()
+}
+
 // Equal reports whether two constructs are structurally identical. It compares
 // functional-syntax renderings, so it is safe for slice-shaped constructs that
 // Go's == would panic on, and it treats operand order as significant.
