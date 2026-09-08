@@ -239,6 +239,118 @@ XSD datatypes are noise in a term menu — but they always pass `Validate`.
 A `Vocabulary` is a snapshot: it does not track later edits to the ontology,
 and is safe to share across goroutines for reading.
 
+## Standard vocabularies
+
+`vocab/` ships the vocabularies the web already agrees on, as typed constants
+with the axioms their publishers assert. They are generated from the published
+documents themselves, not transcribed.
+
+```go
+import (
+    "gowl/owl"
+    "gowl/vocab/dcterms"
+    "gowl/vocab/skos"
+)
+
+o := owl.New("http://example.org/catalogue")
+o.Prefix("", "http://example.org/catalogue#")
+o.Prefix(skos.Prefix, skos.Namespace)
+
+topic := o.Class(":Topic")
+o.Define(topic).SubClassOf(skos.Concept).Label("Topic")
+o.Add(
+    owl.SubObjectPropertyOf{Sub: o.ObjectProperty(":broaderTopic"), Super: skos.Broader},
+    owl.DataPropertyDomain{Property: dcterms.Title, Domain: topic},
+)
+```
+
+Every term carries its kind, so `skos.Broader` cannot be written where a class
+belongs, and its documentation comes from the vocabulary itself:
+
+```go
+// PrefLabel is skos:prefLabel, "preferred label".
+//
+// The preferred lexical label for a resource, in a given language.
+PrefLabel owl.AnnotationProperty = "http://www.w3.org/2004/02/skos/core#prefLabel"
+```
+
+| Package | Terms | Vocabulary |
+|---|---|---|
+| `vocab/rdf` | 22 | RDF itself: `rdf:type`, containers, the reification vocabulary |
+| `vocab/rdfs` | 15 | RDF Schema |
+| `vocab/skos` | 32 | SKOS — concepts, schemes, broader/narrower |
+| `vocab/skosxl` | 6 | SKOS labels as resources |
+| `vocab/dcterms` | 108 | DCMI Metadata Terms |
+| `vocab/dc` | 15 | the original fifteen Dublin Core elements |
+| `vocab/foaf` | 81 | FOAF — people, accounts, documents |
+| `vocab/prov` | 97 | PROV-O — entities, activities, agents |
+| `vocab/dcat` | 56 | DCAT — catalogs, datasets, distributions |
+| `vocab/org` | 45 | the W3C Organization Ontology |
+| `vocab/time` | 106 | OWL-Time — instants, intervals, Allen relations |
+| `vocab/schema` | 3026 | schema.org |
+
+Each package exposes the same three things: the constants, `Ontology()` for a
+fresh copy of the axioms, and `Vocabulary()` for the same terms as a closed set
+with their labels.
+
+```go
+v := skos.Vocabulary()
+ax, err := v.ParseAxiom("SubClassOf(skos:OrderedCollection skos:Collection)")
+_, err = v.ParseAxiom("SubClassOf(skos:Concept <http://example.org/Invented>)")
+// owl: not in the vocabulary: Class http://example.org/Invented
+```
+
+The `vocab` package itself is the index, for the things a program cannot
+hard-code — importing it links in every vocabulary, schema.org included:
+
+```go
+entry, ok := vocab.Owner("http://www.w3.org/ns/prov#wasDerivedFrom")  // -> prov
+entry, ok = vocab.ByPrefix("dcterms")
+p := vocab.Prefixes()          // one table covering all of them
+o := vocab.Merge(iri, entries...)  // one ontology, duplicates dropped
+```
+
+### How they are generated
+
+`go generate ./vocab` re-runs `cmd/vocabgen`, which fetches each document
+listed in `cmd/vocabgen/sources.go`, reads it as RDF, maps the triples onto the
+structural model and writes two files per vocabulary: a `.ofn` holding the
+ontology in functional syntax, and a `.go` holding the constants. The Go file
+embeds the `.ofn` and parses it, so a generated package is exercised by the
+same reader everything else uses. Both files are committed; nothing is fetched
+at build time.
+
+Reading RDF back into a structural ontology is not a lossless operation, and
+`vocabgen` says so out loud:
+
+```
+vocabgen: skos       32 terms    254 triples    209 axioms     0 untranslated
+vocabgen: schema    3026 terms  17949 triples  18229 axioms    20 untranslated
+vocabgen:          untranslated: datatype declared as an instance x7, ...
+```
+
+Every triple it cannot translate is counted and, with `-v`, printed. What
+remains untranslated across all twelve vocabularies is constructs OWL 2 has no
+axiom for — one datatype declared a subclass of another, or an ontology header
+crediting its editors as anonymous nodes — rather than gaps in the reader.
+
+Two mapping decisions are worth knowing about, because neither follows from a
+spec:
+
+- **A bare `rdf:Property` has no OWL kind.** It is read as a data property when
+  everything its range says is a datatype, and as an object property
+  otherwise. So `schema:name` is a `DataProperty` and `schema:author` an
+  `ObjectProperty`.
+- **An unrecognised predicate becomes an annotation, not an error.**
+  schema.org's `domainIncludes` and `rangeIncludes` stay the documentation they
+  are, rather than being promoted to `rdfs:domain` and `rdfs:range`, which
+  schema.org explicitly says they are not.
+
+The RDF readers behind this live in `internal/rdf` — Turtle and RDF/XML, enough
+for these documents — and are not part of gowl's public API. gowl's model is
+structural; a triple store is a different thing, and would have to be designed
+as one.
+
 ## Reasoning
 
 `el.Classify` runs an OWL 2 EL classifier: it works out the class hierarchy the
@@ -482,8 +594,9 @@ diffing, profile checking, a lint rule engine, and the `gowl` command.
 
 Not yet:
 
-- **Other serializations.** No Turtle, RDF/XML, OWL/XML or Manchester syntax;
-  functional syntax only.
+- **Other serializations.** Functional syntax only. `internal/rdf` reads Turtle
+  and RDF/XML well enough to generate `vocab/`, but that is a generator
+  detail, not an API, and there is no OWL/XML or Manchester syntax.
 - **Reasoning beyond EL.** The classifier covers OWL 2 EL; there is no DL
   reasoning, no ABox reasoning, and no minimal justifications. See
   [Reasoning](#reasoning) for what it covers and what it reports as
@@ -511,6 +624,11 @@ Not yet:
 | `owl/diff.go` | ontology diffing |
 | `owl/profile.go` | OWL 2 profile checking |
 | `owl/vocabulary.go` | closed vocabularies: `Prompt`, `Resolve`, `Validate` |
+| `vocab/` | the generated standard vocabularies, and the index over them |
+| `cmd/vocabgen/sources.go` | which vocabularies ship, and where they come from |
+| `internal/rdf/` | Turtle and RDF/XML readers (generator only) |
+| `internal/rdfowl/` | mapping RDF triples onto the structural model |
+| `internal/vocabgen/` | writing a Go package for one vocabulary |
 | `el/normalize.go` | rewriting axioms into EL normal form |
 | `el/classify.go` | the completion rules and saturation |
 | `el/query.go` | subsumption queries, taxonomy, explanations |
@@ -525,6 +643,7 @@ go test ./...                                  # all tests
 go test ./owl -bench . -benchtime 100x         # benchmarks
 go test ./owl -run TestGoldenRoundTrip -update # regenerate golden files
 go test ./owl -fuzz FuzzParseFunctional        # fuzz the parser
+go generate ./vocab                            # refetch and regenerate vocab/
 ```
 
 `owl/testdata` holds loosely formatted fixtures next to their golden renderings,
