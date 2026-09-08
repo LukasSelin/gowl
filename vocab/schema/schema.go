@@ -12641,13 +12641,6 @@ const (
 	// The number of calories.
 	Calories owl.DataProperty = "https://schema.org/calories"
 
-	// CaptionDataProperty is schema:caption.
-	//
-	// The caption for this object. For downloadable machine formats (closed
-	// caption, subtitles etc.) use MediaObject and indicate the
-	// [[encodingFormat]].
-	CaptionDataProperty owl.DataProperty = "https://schema.org/caption"
-
 	// CarbohydrateContent is schema:carbohydrateContent.
 	//
 	// The number of grams of carbohydrates.
@@ -12669,12 +12662,6 @@ const (
 	//
 	// The catalog number for the release.
 	CatalogNumber owl.DataProperty = "https://schema.org/catalogNumber"
-
-	// CategoryDataProperty is schema:category.
-	//
-	// A category for the item. Greater signs or slashes can be used to
-	// informally indicate a category hierarchy.
-	CategoryDataProperty owl.DataProperty = "https://schema.org/category"
 
 	// CharacterName is schema:characterName.
 	//
@@ -13212,11 +13199,6 @@ const (
 	//
 	// Prerequisites needed to fulfill steps in article.
 	Dependencies owl.DataProperty = "https://schema.org/dependencies"
-
-	// DescriptionDataProperty is schema:description.
-	//
-	// A description of the item.
-	DescriptionDataProperty owl.DataProperty = "https://schema.org/description"
 
 	// Device is schema:device.
 	//
@@ -13788,12 +13770,6 @@ const (
 	// adapted similarly.
 	HasGS1DigitalLink owl.DataProperty = "https://schema.org/hasGS1DigitalLink"
 
-	// HasRepresentationDataProperty is schema:hasRepresentation.
-	//
-	// A common representation such as a protein sequence or chemical structure
-	// for this entity. For images use schema.org/image.
-	HasRepresentationDataProperty owl.DataProperty = "https://schema.org/hasRepresentation"
-
 	// Headline is schema:headline.
 	//
 	// Headline of the article.
@@ -13894,15 +13870,6 @@ const (
 	// ICAO identifier for an airport.
 	IcaoCode owl.DataProperty = "https://schema.org/icaoCode"
 
-	// IdentifierDataProperty is schema:identifier.
-	//
-	// The identifier property represents any kind of identifier for any kind
-	// of [[Thing]], such as ISBNs, GTIN codes, UUIDs etc. Schema.org provides
-	// dedicated properties for representing many of these, either as textual
-	// strings or as URL (URI) links. See [background
-	// notes](/docs/datamodel.html#identifierBg) for more details.
-	IdentifierDataProperty owl.DataProperty = "https://schema.org/identifier"
-
 	// InChI is schema:inChI.
 	//
 	// Non-proprietary identifier for molecular entity that can be used in
@@ -13958,12 +13925,6 @@ const (
 	// URL at which the app may be installed, if different from the URL of the
 	// item.
 	InstallUrl owl.DataProperty = "https://schema.org/installUrl"
-
-	// InstrumentDataProperty is schema:instrument.
-	//
-	// The object that helped the agent perform the action. E.g. John wrote a
-	// book with *a pen*.
-	InstrumentDataProperty owl.DataProperty = "https://schema.org/instrument"
 
 	// InteractivityType is schema:interactivityType.
 	//
@@ -14227,12 +14188,6 @@ const (
 	//
 	// A URL to a map of the place.
 	Maps owl.DataProperty = "https://schema.org/maps"
-
-	// MaterialDataProperty is schema:material.
-	//
-	// A material that something is made from, e.g. leather, wool, cotton,
-	// paper.
-	MaterialDataProperty owl.DataProperty = "https://schema.org/material"
 
 	// MaxPrice is schema:maxPrice.
 	//
@@ -15431,12 +15386,6 @@ const (
 	//
 	// Minimum recommended age in years for the audience or user.
 	SuggestedMinAge owl.DataProperty = "https://schema.org/suggestedMinAge"
-
-	// SupplyDataProperty is schema:supply.
-	//
-	// A sub-property of instrument. A supply consumed when performing
-	// instructions or a direction.
-	SupplyDataProperty owl.DataProperty = "https://schema.org/supply"
 
 	// Surface is schema:surface.
 	//

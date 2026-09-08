@@ -208,6 +208,112 @@ func TestConvertReportsAnonymousIndividuals(t *testing.T) {
 	}
 }
 
+// An RDF graph is a set of triples, but two of them can say one thing: an
+// inverse or a disjointness written from both sides is one axiom.
+func TestConvertDeduplicates(t *testing.T) {
+	res := convert(t, `
+		:parent a owl:ObjectProperty ; owl:inverseOf :child .
+		:child a owl:ObjectProperty ; owl:inverseOf :parent .
+		:Cat a owl:Class ; owl:disjointWith :Dog .
+		:Dog a owl:Class ; owl:disjointWith :Cat .
+	`)
+	counts := map[string]int{}
+	for ax := range res.Ontology.All() {
+		counts[owl.CanonicalKey(ax)]++
+	}
+	for key, n := range counts {
+		if n > 1 {
+			t.Errorf("axiom asserted %d times: %s", n, key)
+		}
+	}
+}
+
+// A property characteristic other than functionality belongs to object
+// properties. FOAF marks foaf:mbox_sha1sum both a datatype property and
+// inverse functional, which is OWL Full; writing an axiom anyway would pun the
+// property across two kinds.
+func TestConvertRejectsCharacteristicsOnDataProperties(t *testing.T) {
+	res := convert(t, `
+		:hash a owl:DatatypeProperty , owl:InverseFunctionalProperty , owl:FunctionalProperty .
+	`)
+	wantAxioms(t, res,
+		"Declaration(DataProperty(:hash))",
+		"FunctionalDataProperty(:hash)", // functionality does apply to both
+	)
+	for ax := range res.Ontology.All() {
+		owl.Walk(ax, func(e owl.Entity) {
+			if e.IRI() == "http://example.org/hash" && e.Kind() != owl.KindDataProperty {
+				t.Errorf("%s leaked in as %s", e.IRI(), e.Kind())
+			}
+		})
+	}
+	if len(res.Skipped) != 1 || res.Skipped[0].Reason != "property characteristic on a data property" {
+		t.Errorf("Skipped = %v", res.Skipped)
+	}
+}
+
+// An axiom relating two properties has to read both ends. schema.org states
+// that an object property elsewhere is equivalent to schema:description, whose
+// ranges make it a data property; taking the subject's kind alone would write
+// the other end down as an object property and pun the IRI across two kinds.
+func TestConvertReadsBothEndsOfAPropertyAxiom(t *testing.T) {
+	res := convert(t, `
+		:text a owl:DatatypeProperty .
+		:label a rdf:Property ; rdfs:range xsd:string .
+		:untyped owl:equivalentProperty :text .
+		:alias rdfs:subPropertyOf :label .
+		:link a owl:ObjectProperty .
+		:clash a owl:DatatypeProperty ; owl:equivalentProperty :link .
+	`)
+	// An untyped property takes its kind from the end that has one.
+	wantAxioms(t, res,
+		"EquivalentDataProperties(:untyped :text)",
+		"SubDataPropertyOf(:alias :label)",
+	)
+	// A genuine disagreement is reported rather than resolved by force.
+	var reasons []string
+	for _, s := range res.Skipped {
+		reasons = append(reasons, s.Reason)
+	}
+	if !slices.Contains(reasons, "equivalence between a data and an object property") {
+		t.Errorf("Skipped reasons = %v", reasons)
+	}
+	// Whatever happened, no IRI may come out as two kinds of property.
+	kinds := map[owl.IRI]map[owl.Kind]bool{}
+	for _, e := range res.Ontology.Signature() {
+		if kinds[e.IRI()] == nil {
+			kinds[e.IRI()] = map[owl.Kind]bool{}
+		}
+		kinds[e.IRI()][e.Kind()] = true
+	}
+	for iri, ks := range kinds {
+		if ks[owl.KindDataProperty] && ks[owl.KindObjectProperty] {
+			t.Errorf("%s is both a data and an object property", iri)
+		}
+	}
+}
+
+// The ontology's own IRI may be stated by the caller rather than typed by the
+// document, and its metadata belongs in the header either way.
+func TestConvertHeaderFromStatedIRI(t *testing.T) {
+	res := convert(t, `
+		<http://example.org/> :title "Example terms"@en .
+		:Pizza a owl:Class .
+	`, func(o *Options) { o.IRI = "http://example.org/" })
+
+	if res.Ontology.IRI != "http://example.org/" {
+		t.Errorf("IRI = %q", res.Ontology.IRI)
+	}
+	if len(res.Ontology.Annotations) != 1 {
+		t.Fatalf("Annotations = %v, want the title", res.Ontology.Annotations)
+	}
+	for ax := range res.Ontology.All() {
+		if a, ok := owl.Unwrap(ax).(owl.AnnotationAssertion); ok && a.Subject == "http://example.org/" {
+			t.Errorf("the document's own title was read as a term annotation: %s", ax)
+		}
+	}
+}
+
 func TestConvertDeclaresOnlyOwnedTerms(t *testing.T) {
 	res := convert(t, `
 		:Pizza a owl:Class ; rdfs:subClassOf <http://elsewhere.org/Food> .
