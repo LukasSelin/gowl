@@ -280,7 +280,7 @@ PrefLabel owl.AnnotationProperty = "http://www.w3.org/2004/02/skos/core#prefLabe
 | `vocab/rdfs` | 15 | RDF Schema |
 | `vocab/skos` | 32 | SKOS — concepts, schemes, broader/narrower |
 | `vocab/skosxl` | 6 | SKOS labels as resources |
-| `vocab/dcterms` | 108 | DCMI Metadata Terms |
+| `vocab/dcterms` | 104 | DCMI Metadata Terms |
 | `vocab/dc` | 15 | the original fifteen Dublin Core elements |
 | `vocab/foaf` | 75 | FOAF — people, accounts, documents |
 | `vocab/prov` | 97 | PROV-O — entities, activities, agents |
@@ -337,10 +337,15 @@ property that is inverse functional *and* a datatype property, or two
 properties related across the data/object divide.
 
 The generated ontologies lint clean of errors, and `gowl lint` over them is
-worth reading — most of what it reports is these vocabularies being what they
-are. `undeclared-entity` is mostly terms they reference from each other;
+worth reading, because what it reports is these vocabularies being what they
+are rather than the reader mangling them. `undeclared-entity` is terms they
+reference from each other, which belong to whoever defines them.
 `punned-entity` is the honest residue of reading OWL Full into a structural
-model, and the one deliberate trade below.
+model, and the one deliberate trade below. `missing-label` comes down to six
+DCAT properties — `dcat:inCatalog`, `dcat:seriesMember` and the other
+inverse-direction ones — that DCAT itself leaves unlabelled, defining them by
+`owl:inverseOf` and a SKOS note alone. Inventing labels for them would be
+making data up, so they stay as they are.
 
 Two mapping decisions are worth knowing about, because neither follows from a
 spec:

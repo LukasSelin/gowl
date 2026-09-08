@@ -314,6 +314,24 @@ func TestConvertHeaderFromStatedIRI(t *testing.T) {
 	}
 }
 
+// DCAT says "dcat:inCatalog owl:inverseOf dcat:resource" and gives
+// dcat:inCatalog no rdf:type at all. The axiom settles the kind — only an
+// object property has an inverse — and OWL 2 wants every entity declared.
+func TestConvertDeclaresUntypedOwnTerms(t *testing.T) {
+	res := convert(t, `
+		:resource a owl:ObjectProperty .
+		:inCatalog owl:inverseOf :resource .
+		<http://elsewhere.org/thing> owl:inverseOf :resource .
+	`)
+	wantAxioms(t, res, "Declaration(ObjectProperty(:inCatalog))")
+
+	for _, e := range res.Ontology.Signature() {
+		if e.IRI() == "http://elsewhere.org/thing" && res.Ontology.IsDeclared(e) {
+			t.Error("a term from another namespace was declared")
+		}
+	}
+}
+
 func TestConvertDeclaresOnlyOwnedTerms(t *testing.T) {
 	res := convert(t, `
 		:Pizza a owl:Class ; rdfs:subClassOf <http://elsewhere.org/Food> .

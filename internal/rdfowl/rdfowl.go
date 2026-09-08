@@ -84,9 +84,29 @@ func Convert(g *rdf.Graph, opts Options) (*Result, error) {
 	if err := o.Err(); err != nil {
 		return nil, err
 	}
+	c.declareRemaining()
 	out := dedupe(o)
 	out.Sort()
 	return &Result{Ontology: out, Skipped: c.skipped}, nil
+}
+
+// declareRemaining declares the terms an ontology defines but never types.
+//
+// DCAT states "dcat:inCatalog owl:inverseOf dcat:resource" and nothing else
+// about dcat:inCatalog — no rdf:type at all — so the classification pass has
+// nothing to go on. But the axiom it appears in has already settled the
+// question: only an object property can be an inverse. Reading the kind back
+// out of the ontology's own signature is that inference, and OWL 2 wants every
+// entity declared.
+//
+// Only terms in the vocabulary's own namespaces are declared. A term it merely
+// references belongs to whoever defines it.
+func (c *conv) declareRemaining() {
+	for _, e := range c.o.Signature() {
+		if c.owns(string(e.IRI())) && !c.o.IsDeclared(e) {
+			c.o.Declare(e)
+		}
+	}
 }
 
 // dedupe returns the ontology without axioms it already states. An RDF graph

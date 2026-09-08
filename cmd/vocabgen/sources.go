@@ -101,10 +101,14 @@ var sources = []source{
 		url:     "https://www.dublincore.org/specifications/dublin-core/dcmi-terms/dublin_core_terms.ttl",
 		format:  "turtle",
 
-		prefix:     "dcterms",
-		namespace:  nsDCTerms,
-		namespaces: []string{nsDCTerms, "http://purl.org/dc/dcmitype/", "http://purl.org/dc/dcam/"},
-		iri:        "http://purl.org/dc/terms/",
+		prefix:    "dcterms",
+		namespace: nsDCTerms,
+		iri:       "http://purl.org/dc/terms/",
+		// The document references the DCAM and DCMI Type namespaces — as the
+		// types of its encoding schemes, and for dcam:domainIncludes — but it
+		// defines neither. Claiming them here would put four terms in the
+		// package that it cannot say anything about; both are published
+		// separately and would be their own source entries.
 	},
 	{
 		pkg:     "dc",

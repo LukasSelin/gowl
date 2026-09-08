@@ -30,12 +30,6 @@ const (
 
 // Classes.
 const (
-	// VocabularyEncodingScheme is dcam:VocabularyEncodingScheme.
-	VocabularyEncodingScheme owl.Class = "http://purl.org/dc/dcam/VocabularyEncodingScheme"
-
-	// Collection is <http://purl.org/dc/dcmitype/Collection>.
-	Collection owl.Class = "http://purl.org/dc/dcmitype/Collection"
-
 	// Agent is dcterms:Agent.
 	//
 	// A resource that acts or has the power to act.
@@ -541,12 +535,6 @@ const (
 
 // Annotation properties.
 const (
-	// DomainIncludes is dcam:domainIncludes.
-	DomainIncludes owl.AnnotationProperty = "http://purl.org/dc/dcam/domainIncludes"
-
-	// RangeIncludes is dcam:rangeIncludes.
-	RangeIncludes owl.AnnotationProperty = "http://purl.org/dc/dcam/rangeIncludes"
-
 	// DescriptionAnnotation is dcterms:description.
 	//
 	// An account of the resource.
