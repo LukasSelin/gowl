@@ -521,6 +521,29 @@ reasoner could handle.
 | `subclass-cycle` | error | a hierarchy cycle, which silently makes its classes equivalent |
 | `orphan-class` | info | a class with no asserted superclass or equivalence |
 
+One more rule is not in `Default()`, because it needs to be told which
+vocabularies count as standard. `prefer-standard-term` reports a term an
+ontology mints for itself when a reference vocabulary already names it —
+matching on the local name and on `rdfs:label`, within one entity kind:
+
+```go
+rules := append(lint.Default(), lint.PreferStandardTerms(
+    foaf.Vocabulary(), dcterms.Vocabulary(), schema.Vocabulary(),
+))
+```
+
+```
+info: prefer-standard-term: class :Person has the same name as foaf:Person; consider using it instead
+info: prefer-standard-term: class :Human is labelled "Agent", which matches dcterms:Agent; consider using it instead
+info: prefer-standard-term: objectproperty :knows has the same name as foaf:knows; consider using it instead
+```
+
+Reference order is the preference order — the first vocabulary to name a term
+wins — and the rule stays quiet about a term whose alignment is already stated,
+so `EquivalentClasses(:Person foaf:Person)` is not nagged about. It is `info`,
+because minting your own term is often the right call. `gowl lint` wires it up
+over everything in `vocab/`, with schema.org last.
+
 A `lint.Rule` is an ordinary value, so a project can drop the built-ins it
 disagrees with and add its own:
 

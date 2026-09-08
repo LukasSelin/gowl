@@ -70,6 +70,26 @@ func TestVocabularyResolvesItsOwnTerms(t *testing.T) {
 	}
 }
 
+// A vocabulary is what it declares, not what it mentions. FOAF names
+// schema.org's Person in order to relate the two, and PROV names foaf:Agent;
+// neither term is theirs to offer as its own.
+func TestVocabularyExcludesReferencedTerms(t *testing.T) {
+	for _, e := range vocab.All() {
+		t.Run(e.Package, func(t *testing.T) {
+			o := e.Ontology()
+			for _, term := range e.Vocabulary().Terms() {
+				if !o.IsDeclared(term.Entity) {
+					t.Errorf("%s is referenced by %s but not declared by it",
+						term.Entity.IRI(), e.Package)
+				}
+			}
+		})
+	}
+	if foaf.Vocabulary().Contains(owl.Class("http://schema.org/Person")) {
+		t.Error("foaf offers a schema.org term as one of its own")
+	}
+}
+
 func TestOntologyReturnsAFreshCopy(t *testing.T) {
 	before := skos.Ontology().Len()
 	skos.Ontology().Add(owl.Declaration{Entity: owl.Class("http://example.org/Intruder")})

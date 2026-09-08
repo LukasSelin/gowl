@@ -218,15 +218,22 @@ var builtinNamespaces = []string{
 }
 
 // vocabularyOptions is the argument list for the generated NewVocabulary call.
-// A package whose own terms are OWL's built-in ones has to ask for them, or
-// its Vocabulary would come back empty.
+//
+// DeclaredOnly is always passed: a vocabulary document references terms it does
+// not define — FOAF states that foaf:Person is equivalent to schema.org's
+// Person — and those have no business in the closed set of what this
+// vocabulary offers. Only the terms it declares are its own.
+//
+// A package whose own terms are OWL's built-in ones also has to ask for them,
+// or its Vocabulary would come back empty.
 func (p Package) vocabularyOptions() string {
+	opts := ", owl.DeclaredOnly()"
 	for _, ns := range builtinNamespaces {
 		if p.Namespace == ns {
-			return ", owl.WithBuiltins()"
+			return opts + ", owl.WithBuiltins()"
 		}
 	}
-	return ""
+	return opts
 }
 
 func (p Package) writeAccessors(b *bytes.Buffer) {
@@ -246,9 +253,10 @@ func Ontology() *owl.Ontology {
 	return o
 }
 
-// Vocabulary returns the terms with their labels and definitions, as the
-// closed set an untrusted axiom can be validated against. It is built once and
-// is safe to share.
+// Vocabulary returns the terms this vocabulary declares, with their labels and
+// definitions, as the closed set an untrusted axiom can be validated against.
+// Terms it only references — another vocabulary's, named to relate the two —
+// are not part of it. It is built once and is safe to share.
 func Vocabulary() *owl.Vocabulary { return vocabulary() }
 
 var vocabulary = sync.OnceValue(func() *owl.Vocabulary {

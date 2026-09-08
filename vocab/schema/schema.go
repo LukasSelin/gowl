@@ -19132,11 +19132,12 @@ func Ontology() *owl.Ontology {
 	return o
 }
 
-// Vocabulary returns the terms with their labels and definitions, as the
-// closed set an untrusted axiom can be validated against. It is built once and
-// is safe to share.
+// Vocabulary returns the terms this vocabulary declares, with their labels and
+// definitions, as the closed set an untrusted axiom can be validated against.
+// Terms it only references — another vocabulary's, named to relate the two —
+// are not part of it. It is built once and is safe to share.
 func Vocabulary() *owl.Vocabulary { return vocabulary() }
 
 var vocabulary = sync.OnceValue(func() *owl.Vocabulary {
-	return owl.NewVocabulary(Ontology())
+	return owl.NewVocabulary(Ontology(), owl.DeclaredOnly())
 })
