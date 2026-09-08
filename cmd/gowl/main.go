@@ -2,15 +2,22 @@
 //
 // Usage:
 //
-//	gowl lint    [-disable rules] [-fail-on severity] file.ofn
-//	gowl diff    [-summary] old.ofn new.ofn
-//	gowl profile file.ofn
+//	gowl lint    [-disable rules] [-fail-on severity] [-json] file.ofn
+//	gowl diff    [-summary] [-json] old.ofn new.ofn
+//	gowl profile [-v] [-json] file.ofn
+//	gowl classify [-axioms] [-explain "sub super"] [-json] file.ofn
 //	gowl fmt     [-w] [-canonical] file.ofn
-//	gowl stats   file.ofn
+//	gowl stats   [-json] file.ofn
 //
 // Exit status is 0 on success, 1 when a check fails (lint findings at or above
 // the fail threshold, or a non-empty diff under -exit-code), and 2 on a usage
 // or I/O error.
+//
+// Every command except fmt takes -json, which writes one JSON object to stdout
+// instead of text — including on failure, so a caller that parses stdout always
+// gets a document. Exit statuses are the same in both modes. fmt has no -json
+// because its output is an ontology document, not a report. The document shapes
+// live in json.go.
 package main
 
 import (
@@ -47,6 +54,8 @@ func run(args []string) int {
 		return cmdDiff(args[1:])
 	case "profile":
 		return cmdProfile(args[1:])
+	case "classify":
+		return cmdClassify(args[1:])
 	case "fmt":
 		return cmdFmt(args[1:])
 	case "stats":
@@ -64,12 +73,17 @@ func run(args []string) int {
 func usage() {
 	fmt.Fprint(os.Stderr, `gowl inspects OWL 2 ontologies in functional syntax.
 
-  gowl lint    [-disable rules] [-fail-on severity] file.ofn
-  gowl diff    [-summary] [-exit-code] old.ofn new.ofn
-  gowl profile file.ofn
+  gowl lint    [-disable rules] [-fail-on severity] [-json] file.ofn
+  gowl diff    [-summary] [-exit-code] [-json] old.ofn new.ofn
+  gowl profile [-v] [-json] file.ofn
+  gowl classify [-axioms] [-explain "sub super"] [-unsatisfiable] [-json] file.ofn
   gowl fmt     [-w] [-canonical] file.ofn
-  gowl stats   file.ofn
+  gowl stats   [-json] file.ofn
 
+classify runs the OWL 2 EL reasoner: it infers the class hierarchy, finds
+classes that cannot have instances, and explains why a subsumption holds.
+
+Every command except fmt takes -json for machine-readable output.
 Run "gowl <command> -h" for the flags of one command.
 `)
 }
@@ -121,6 +135,7 @@ func cmdLint(args []string) int {
 	disable := fs.String("disable", "", "comma-separated rule names to skip")
 	failOn := fs.String("fail-on", "error", "lowest severity that fails the run: info, warning or error")
 	list := fs.Bool("list", false, "list the available rules and exit")
+	jsonOut := fs.Bool("json", false, "write one JSON object to stdout instead of text")
 	files, err := parseArgs(fs, args)
 	if err != nil {
 		return exitProblem
@@ -128,6 +143,10 @@ func cmdLint(args []string) int {
 
 	rules := lint.Default()
 	if *list {
+		if *jsonOut {
+			writeJSON(rulesJSON(rules))
+			return exitOK
+		}
 		for _, r := range rules {
 			fmt.Printf("%-22s %-8s %s\n", r.Name, r.Severity, r.Description)
 		}
@@ -140,31 +159,40 @@ func cmdLint(args []string) int {
 
 	threshold, err := lint.ParseSeverity(*failOn)
 	if err != nil {
-		return fail(err)
+		return failWith(*jsonOut, err)
 	}
 
 	kept, unknown := lint.Select(rules, strings.Split(*disable, ","))
 	if len(unknown) > 0 {
-		return fail(fmt.Errorf("unknown rule(s) in -disable: %s", strings.Join(unknown, ", ")))
+		return failWith(*jsonOut, fmt.Errorf("unknown rule(s) in -disable: %s", strings.Join(unknown, ", ")))
 	}
 
 	o, err := load(files[0])
 	if err != nil {
-		return fail(err)
+		return failWith(*jsonOut, err)
 	}
 
 	findings := lint.Run(o, kept)
+	worst, any := lint.MaxSeverity(findings)
+	failed := any && worst >= threshold
+
+	if *jsonOut {
+		writeJSON(lintJSON(files[0], o, findings, threshold))
+		if failed {
+			return exitFailed
+		}
+		return exitOK
+	}
+
 	for _, f := range findings {
 		fmt.Printf("%s: %s: %s\n", f.Severity, f.Rule, f.Message)
 	}
-
-	worst, any := lint.MaxSeverity(findings)
 	if !any {
 		fmt.Println("no findings")
 		return exitOK
 	}
 	fmt.Printf("\n%d finding(s)\n", len(findings))
-	if worst >= threshold {
+	if failed {
 		return exitFailed
 	}
 	return exitOK
@@ -176,6 +204,7 @@ func cmdDiff(args []string) int {
 	fs := flag.NewFlagSet("diff", flag.ContinueOnError)
 	summary := fs.Bool("summary", false, "print only a one-line summary")
 	exitCode := fs.Bool("exit-code", false, "exit 1 when the ontologies differ")
+	jsonOut := fs.Bool("json", false, "write one JSON object to stdout instead of text")
 	files, err := parseArgs(fs, args)
 	if err != nil {
 		return exitProblem
@@ -187,14 +216,22 @@ func cmdDiff(args []string) int {
 
 	from, err := load(files[0])
 	if err != nil {
-		return fail(err)
+		return failWith(*jsonOut, err)
 	}
 	to, err := load(files[1])
 	if err != nil {
-		return fail(err)
+		return failWith(*jsonOut, err)
 	}
 
 	d := owl.DiffOntologies(from, to)
+	if *jsonOut {
+		writeJSON(diffJSON(files[0], files[1], d, *summary))
+		if *exitCode && !d.Empty() {
+			return exitFailed
+		}
+		return exitOK
+	}
+
 	if *summary {
 		fmt.Println(d.Summary())
 	} else if d.Empty() {
@@ -215,6 +252,7 @@ func cmdDiff(args []string) int {
 func cmdProfile(args []string) int {
 	fs := flag.NewFlagSet("profile", flag.ContinueOnError)
 	verbose := fs.Bool("v", false, "list every violation, not just a count")
+	jsonOut := fs.Bool("json", false, "write one JSON object to stdout instead of text")
 	files, err := parseArgs(fs, args)
 	if err != nil {
 		return exitProblem
@@ -226,7 +264,12 @@ func cmdProfile(args []string) int {
 
 	o, err := load(files[0])
 	if err != nil {
-		return fail(err)
+		return failWith(*jsonOut, err)
+	}
+
+	if *jsonOut {
+		writeJSON(profileJSON(files[0], o, *verbose))
+		return exitOK
 	}
 
 	for _, p := range owl.AllProfiles {
@@ -246,9 +289,13 @@ func cmdProfile(args []string) int {
 		fmt.Println("\nrun with -v to see the violations")
 	}
 	// DL coverage is partial, so say so rather than let "yes" overpromise.
-	fmt.Println("\nnote: the DL check covers only the simple-property restriction")
+	fmt.Println("\nnote: " + dlCheckNote)
 	return exitOK
 }
+
+// dlCheckNote is shared by the text and JSON output so the caveat cannot drift
+// between them.
+const dlCheckNote = "the DL check covers only the simple-property restriction"
 
 // --- fmt --------------------------------------------------------------------
 
@@ -290,6 +337,7 @@ func cmdFmt(args []string) int {
 
 func cmdStats(args []string) int {
 	fs := flag.NewFlagSet("stats", flag.ContinueOnError)
+	jsonOut := fs.Bool("json", false, "write one JSON object to stdout instead of text")
 	files, err := parseArgs(fs, args)
 	if err != nil {
 		return exitProblem
@@ -301,7 +349,13 @@ func cmdStats(args []string) int {
 
 	o, err := load(files[0])
 	if err != nil {
-		return fail(err)
+		return failWith(*jsonOut, err)
+	}
+
+	counts, kinds := axiomKindCounts(o)
+	if *jsonOut {
+		writeJSON(statsJSON(files[0], o, kinds, counts))
+		return exitOK
 	}
 
 	if o.IRI != "" {
@@ -318,8 +372,18 @@ func cmdStats(args []string) int {
 	fmt.Printf("individuals         %d\n", len(o.Individuals()))
 	fmt.Printf("datatypes           %d\n", len(o.Datatypes()))
 
+	fmt.Println("\nby axiom type")
+	for _, k := range kinds {
+		fmt.Printf("  %-32s %d\n", k, counts[k])
+	}
+	return exitOK
+}
+
+// axiomKindCounts tallies axioms by functional-syntax keyword, returning the
+// keywords ordered most frequent first and then alphabetically.
+func axiomKindCounts(o *owl.Ontology) (map[string]int, []string) {
 	counts := make(map[string]int)
-	for _, ax := range o.Axioms() {
+	for ax := range o.All() {
 		counts[axiomKind(ax)]++
 	}
 	kinds := make([]string, 0, len(counts))
@@ -332,11 +396,7 @@ func cmdStats(args []string) int {
 		}
 		return kinds[i] < kinds[j]
 	})
-	fmt.Println("\nby axiom type")
-	for _, k := range kinds {
-		fmt.Printf("  %-32s %d\n", k, counts[k])
-	}
-	return exitOK
+	return counts, kinds
 }
 
 // axiomKind names an axiom by its functional-syntax keyword.
