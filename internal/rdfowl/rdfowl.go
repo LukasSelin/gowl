@@ -84,8 +84,51 @@ func Convert(g *rdf.Graph, opts Options) (*Result, error) {
 	if err := o.Err(); err != nil {
 		return nil, err
 	}
-	o.Sort()
-	return &Result{Ontology: o, Skipped: c.skipped}, nil
+	c.declareRemaining()
+	out := dedupe(o)
+	out.Sort()
+	return &Result{Ontology: out, Skipped: c.skipped}, nil
+}
+
+// declareRemaining declares the terms an ontology defines but never types.
+//
+// DCAT states "dcat:inCatalog owl:inverseOf dcat:resource" and nothing else
+// about dcat:inCatalog — no rdf:type at all — so the classification pass has
+// nothing to go on. But the axiom it appears in has already settled the
+// question: only an object property can be an inverse. Reading the kind back
+// out of the ontology's own signature is that inference, and OWL 2 wants every
+// entity declared.
+//
+// Only terms in the vocabulary's own namespaces are declared. A term it merely
+// references belongs to whoever defines it.
+func (c *conv) declareRemaining() {
+	for _, e := range c.o.Signature() {
+		if c.owns(string(e.IRI())) && !c.o.IsDeclared(e) {
+			c.o.Declare(e)
+		}
+	}
+}
+
+// dedupe returns the ontology without axioms it already states. An RDF graph
+// is a set of triples, but several of them can map to one axiom: FOAF writes
+// owl:inverseOf and owl:disjointWith from both sides, and each direction
+// yields the same InverseObjectProperties or DisjointClasses. An ontology is a
+// set of axioms, so the repeat carries nothing.
+func dedupe(o *owl.Ontology) *owl.Ontology {
+	out := owl.New(o.IRI)
+	out.VersionIRI = o.VersionIRI
+	out.Imports = o.Imports
+	out.Annotations = o.Annotations
+	out.Prefixes = o.Prefixes
+
+	seen := make(map[string]bool, o.Len())
+	for ax := range o.All() {
+		if key := owl.CanonicalKey(ax); !seen[key] {
+			seen[key] = true
+			out.Add(ax)
+		}
+	}
+	return out
 }
 
 type conv struct {
@@ -372,7 +415,11 @@ func (c *conv) subject(s rdf.Term) {
 		return
 	}
 
-	if c.g.HasType(s, owlIRI("Ontology")) {
+	// The ontology's own IRI may be stated by the source list rather than by
+	// the document: DCMI does not type <http://purl.org/dc/terms/> as an
+	// owl:Ontology, and its dcterms:title would otherwise be read as an
+	// assertion about a term instead of the document's title.
+	if c.g.HasType(s, owlIRI("Ontology")) || (c.opts.IRI != "" && string(iri) == c.opts.IRI) {
 		c.header(s)
 		return
 	}
@@ -497,24 +544,39 @@ func (c *conv) statement(t rdf.Triple) {
 		return
 
 	case owlIRI("equivalentProperty"):
-		switch kind {
-		case owl.KindDataProperty:
-			c.o.Add(owl.EquivalentDataProperties{owl.DataProperty(subj), owl.DataProperty(t.Object.Text())})
-		default:
-			c.o.Add(owl.EquivalentObjectProperties{owl.ObjectProperty(subj), owl.ObjectProperty(t.Object.Text())})
+		other := t.Object.Text()
+		data, ok := c.pairIsData(subj, other)
+		if !ok {
+			c.skip(t, "equivalence between a data and an object property")
+			return
+		}
+		if data {
+			c.o.Add(owl.EquivalentDataProperties{owl.DataProperty(subj), owl.DataProperty(other)})
+		} else {
+			c.o.Add(owl.EquivalentObjectProperties{owl.ObjectProperty(subj), owl.ObjectProperty(other)})
 		}
 		return
 
 	case owlIRI("propertyDisjointWith"):
-		switch kind {
-		case owl.KindDataProperty:
-			c.o.Add(owl.DisjointDataProperties{owl.DataProperty(subj), owl.DataProperty(t.Object.Text())})
-		default:
-			c.o.Add(owl.DisjointObjectProperties{owl.ObjectProperty(subj), owl.ObjectProperty(t.Object.Text())})
+		other := t.Object.Text()
+		data, ok := c.pairIsData(subj, other)
+		if !ok {
+			c.skip(t, "disjointness between a data and an object property")
+			return
+		}
+		if data {
+			c.o.Add(owl.DisjointDataProperties{owl.DataProperty(subj), owl.DataProperty(other)})
+		} else {
+			c.o.Add(owl.DisjointObjectProperties{owl.ObjectProperty(subj), owl.ObjectProperty(other)})
 		}
 		return
 
 	case owlIRI("inverseOf"):
+		// Only object properties have inverses.
+		if data, ok := c.pairIsData(subj, t.Object.Text()); !ok || data {
+			c.skip(t, "inverse of a data property")
+			return
+		}
 		if p, ok := c.objectPropertyExpression(t.Object); ok {
 			c.o.Add(owl.InverseObjectProperties{First: owl.ObjectProperty(subj), Second: p})
 		} else {
@@ -566,23 +628,32 @@ func (c *conv) typeStatement(t rdf.Triple) {
 			c.o.Add(owl.FunctionalObjectProperty{Property: owl.ObjectProperty(self)})
 		}
 		return
-	case owlIRI("InverseFunctionalProperty"):
-		c.o.Add(owl.InverseFunctionalObjectProperty{Property: owl.ObjectProperty(self)})
-		return
-	case owlIRI("TransitiveProperty"):
-		c.o.Add(owl.TransitiveObjectProperty{Property: owl.ObjectProperty(self)})
-		return
-	case owlIRI("SymmetricProperty"):
-		c.o.Add(owl.SymmetricObjectProperty{Property: owl.ObjectProperty(self)})
-		return
-	case owlIRI("AsymmetricProperty"):
-		c.o.Add(owl.AsymmetricObjectProperty{Property: owl.ObjectProperty(self)})
-		return
-	case owlIRI("ReflexiveProperty"):
-		c.o.Add(owl.ReflexiveObjectProperty{Property: owl.ObjectProperty(self)})
-		return
-	case owlIRI("IrreflexiveProperty"):
-		c.o.Add(owl.IrreflexiveObjectProperty{Property: owl.ObjectProperty(self)})
+	case owlIRI("InverseFunctionalProperty"), owlIRI("TransitiveProperty"),
+		owlIRI("SymmetricProperty"), owlIRI("AsymmetricProperty"),
+		owlIRI("ReflexiveProperty"), owlIRI("IrreflexiveProperty"):
+		// Every characteristic but functionality applies to object properties
+		// alone. FOAF marks foaf:mbox_sha1sum both a datatype property and
+		// inverse functional, which is legal in OWL Full and has no OWL 2
+		// axiom; writing one anyway would pun the property across two kinds.
+		if k, _ := c.kindOf(self); k == owl.KindDataProperty {
+			c.skip(t, "property characteristic on a data property")
+			return
+		}
+		p := owl.ObjectProperty(self)
+		switch rdf.IRI(subj) {
+		case owlIRI("InverseFunctionalProperty"):
+			c.o.Add(owl.InverseFunctionalObjectProperty{Property: p})
+		case owlIRI("TransitiveProperty"):
+			c.o.Add(owl.TransitiveObjectProperty{Property: p})
+		case owlIRI("SymmetricProperty"):
+			c.o.Add(owl.SymmetricObjectProperty{Property: p})
+		case owlIRI("AsymmetricProperty"):
+			c.o.Add(owl.AsymmetricObjectProperty{Property: p})
+		case owlIRI("ReflexiveProperty"):
+			c.o.Add(owl.ReflexiveObjectProperty{Property: p})
+		case owlIRI("IrreflexiveProperty"):
+			c.o.Add(owl.IrreflexiveObjectProperty{Property: p})
+		}
 		return
 	}
 	if _, isEntityType := typeKinds[rdf.IRI(subj)]; isEntityType {
@@ -613,24 +684,63 @@ func (c *conv) typeStatement(t rdf.Triple) {
 	c.skip(t, "unreadable type")
 }
 
+// pairIsData decides whether an axiom relating two properties is the data or
+// the object form, reading both ends rather than only the subject.
+//
+// It matters because a document relates its own property to somebody else's:
+// schema.org states that an OMG Commons object property is equivalent to
+// schema:description, which its ranges make a data property. Taking the
+// subject's kind alone would write the other end down as an object property
+// too, and the same IRI would then appear as both kinds. It reports false when
+// the two ends genuinely disagree, which OWL 2 cannot express.
+func (c *conv) pairIsData(a, b string) (data, ok bool) {
+	ka, knownA := c.propertyKindOf(a)
+	kb, knownB := c.propertyKindOf(b)
+	switch {
+	case knownA && knownB && ka != kb:
+		return false, false
+	case knownA:
+		return ka == owl.KindDataProperty, true
+	case knownB:
+		return kb == owl.KindDataProperty, true
+	}
+	return false, true // neither is known: an object property is the default
+}
+
+// propertyKindOf reports an IRI's kind when it is a data or object property,
+// and false for anything else — including a term this document never typed.
+func (c *conv) propertyKindOf(iri string) (owl.Kind, bool) {
+	k, known := c.kindOf(iri)
+	if !known || (k != owl.KindDataProperty && k != owl.KindObjectProperty) {
+		return 0, false
+	}
+	return k, true
+}
+
 func (c *conv) subProperty(t rdf.Triple, kind owl.Kind) {
 	sub, super := t.Subject.Text(), t.Object.Text()
-	switch kind {
-	case owl.KindDataProperty:
-		c.o.Add(owl.SubDataPropertyOf{Sub: owl.DataProperty(sub), Super: owl.DataProperty(super)})
-	case owl.KindAnnotationProperty:
+	if kind == owl.KindAnnotationProperty {
 		c.o.Add(owl.SubAnnotationPropertyOf{
 			Sub:   owl.AnnotationProperty(sub),
 			Super: owl.AnnotationProperty(super),
 		})
-	default:
-		p, ok := c.objectPropertyExpression(t.Object)
-		if !ok {
-			c.skip(t, "unreadable superproperty")
-			return
-		}
-		c.o.Add(owl.SubObjectPropertyOf{Sub: owl.ObjectProperty(sub), Super: p})
+		return
 	}
+	data, ok := c.pairIsData(sub, super)
+	if !ok {
+		c.skip(t, "a data property below an object property")
+		return
+	}
+	if data {
+		c.o.Add(owl.SubDataPropertyOf{Sub: owl.DataProperty(sub), Super: owl.DataProperty(super)})
+		return
+	}
+	p, ok := c.objectPropertyExpression(t.Object)
+	if !ok {
+		c.skip(t, "unreadable superproperty")
+		return
+	}
+	c.o.Add(owl.SubObjectPropertyOf{Sub: owl.ObjectProperty(sub), Super: p})
 }
 
 func (c *conv) domain(t rdf.Triple, kind owl.Kind) {
@@ -696,6 +806,20 @@ func (c *conv) hasKey(t rdf.Triple) {
 	c.o.Add(key)
 }
 
+// annotation handles a triple with no other structural reading: it documents
+// its subject rather than saying anything logical about it.
+//
+// A predicate that the same document also declares a data or object property
+// is left as an annotation here, which puns it across two entity kinds. That
+// is a real cost — OWL 2 DL forbids it — but the alternative is worse. Reading
+// those triples as property assertions instead turns every documented term
+// into a named individual, which costs schema.org two thousand spurious
+// entities, and drops the metadata whose property has no declared range:
+// DCMI's dcterms:description is not typed, so its values would be discarded
+// rather than kept as the descriptions they are. These vocabularies are OWL
+// Full and cannot be read into DL without giving something up; keeping the
+// documentation is the trade worth making. The punning is visible to anyone
+// who lints the result.
 func (c *conv) annotation(t rdf.Triple) {
 	if _, ok := t.Subject.(rdf.IRI); !ok {
 		c.skip(t, "annotation on a blank node")

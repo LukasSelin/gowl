@@ -280,14 +280,14 @@ PrefLabel owl.AnnotationProperty = "http://www.w3.org/2004/02/skos/core#prefLabe
 | `vocab/rdfs` | 15 | RDF Schema |
 | `vocab/skos` | 32 | SKOS — concepts, schemes, broader/narrower |
 | `vocab/skosxl` | 6 | SKOS labels as resources |
-| `vocab/dcterms` | 108 | DCMI Metadata Terms |
+| `vocab/dcterms` | 104 | DCMI Metadata Terms |
 | `vocab/dc` | 15 | the original fifteen Dublin Core elements |
-| `vocab/foaf` | 81 | FOAF — people, accounts, documents |
+| `vocab/foaf` | 75 | FOAF — people, accounts, documents |
 | `vocab/prov` | 97 | PROV-O — entities, activities, agents |
 | `vocab/dcat` | 56 | DCAT — catalogs, datasets, distributions |
 | `vocab/org` | 45 | the W3C Organization Ontology |
 | `vocab/time` | 106 | OWL-Time — instants, intervals, Allen relations |
-| `vocab/schema` | 3026 | schema.org |
+| `vocab/schema` | 3018 | schema.org |
 
 Each package exposes the same three things: the constants, `Ontology()` for a
 fresh copy of the axioms, and `Vocabulary()` for the same terms as a closed set
@@ -331,8 +331,21 @@ vocabgen:          untranslated: datatype declared as an instance x7, ...
 
 Every triple it cannot translate is counted and, with `-v`, printed. What
 remains untranslated across all twelve vocabularies is constructs OWL 2 has no
-axiom for — one datatype declared a subclass of another, or an ontology header
-crediting its editors as anonymous nodes — rather than gaps in the reader.
+axiom for rather than gaps in the reader: one datatype declared a subclass of
+another, an ontology header crediting its editors as anonymous nodes, a
+property that is inverse functional *and* a datatype property, or two
+properties related across the data/object divide.
+
+The generated ontologies lint clean of errors, and `gowl lint` over them is
+worth reading, because what it reports is these vocabularies being what they
+are rather than the reader mangling them. `undeclared-entity` is terms they
+reference from each other, which belong to whoever defines them.
+`punned-entity` is the honest residue of reading OWL Full into a structural
+model, and the one deliberate trade below. `missing-label` comes down to six
+DCAT properties — `dcat:inCatalog`, `dcat:seriesMember` and the other
+inverse-direction ones — that DCAT itself leaves unlabelled, defining them by
+`owl:inverseOf` and a SKOS note alone. Inventing labels for them would be
+making data up, so they stay as they are.
 
 Two mapping decisions are worth knowing about, because neither follows from a
 spec:
@@ -344,7 +357,13 @@ spec:
 - **An unrecognised predicate becomes an annotation, not an error.**
   schema.org's `domainIncludes` and `rangeIncludes` stay the documentation they
   are, rather than being promoted to `rdfs:domain` and `rdfs:range`, which
-  schema.org explicitly says they are not.
+  schema.org explicitly says they are not. Where a document also declares such
+  a predicate a data property — DCMI does with `dcterms:title` — this puns it
+  across two entity kinds, which OWL 2 DL forbids. Reading those triples as
+  property assertions instead avoids the pun but turns every documented term
+  into an individual, costing schema.org two thousand spurious entities, and
+  discards the metadata whose property has no declared range. Keeping the
+  documentation is the better trade; `punned-entity` makes the cost visible.
 
 The RDF readers behind this live in `internal/rdf` — Turtle and RDF/XML, enough
 for these documents — and are not part of gowl's public API. gowl's model is
@@ -520,6 +539,29 @@ reasoner could handle.
 | `trivial-axiom` | warning | axioms asserting nothing, e.g. `SubClassOf(A A)` |
 | `subclass-cycle` | error | a hierarchy cycle, which silently makes its classes equivalent |
 | `orphan-class` | info | a class with no asserted superclass or equivalence |
+
+One more rule is not in `Default()`, because it needs to be told which
+vocabularies count as standard. `prefer-standard-term` reports a term an
+ontology mints for itself when a reference vocabulary already names it —
+matching on the local name and on `rdfs:label`, within one entity kind:
+
+```go
+rules := append(lint.Default(), lint.PreferStandardTerms(
+    foaf.Vocabulary(), dcterms.Vocabulary(), schema.Vocabulary(),
+))
+```
+
+```
+info: prefer-standard-term: class :Person has the same name as foaf:Person; consider using it instead
+info: prefer-standard-term: class :Human is labelled "Agent", which matches dcterms:Agent; consider using it instead
+info: prefer-standard-term: objectproperty :knows has the same name as foaf:knows; consider using it instead
+```
+
+Reference order is the preference order — the first vocabulary to name a term
+wins — and the rule stays quiet about a term whose alignment is already stated,
+so `EquivalentClasses(:Person foaf:Person)` is not nagged about. It is `info`,
+because minting your own term is often the right call. `gowl lint` wires it up
+over everything in `vocab/`, with schema.org last.
 
 A `lint.Rule` is an ordinary value, so a project can drop the built-ins it
 disagrees with and add its own:

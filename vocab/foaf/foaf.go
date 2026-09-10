@@ -112,11 +112,6 @@ const (
 	// Indicates a homepage of the service provide for this online account.
 	AccountServiceHomepage owl.ObjectProperty = "http://xmlns.com/foaf/0.1/accountServiceHomepage"
 
-	// AimChatID is foaf:aimChatID, "AIM chat ID".
-	//
-	// An AIM chat ID
-	AimChatID owl.ObjectProperty = "http://xmlns.com/foaf/0.1/aimChatID"
-
 	// BasedNear is foaf:based_near, "based near".
 	//
 	// A location that something is based near, for some broadly human notion
@@ -159,11 +154,6 @@ const (
 	// A homepage for some thing.
 	Homepage owl.ObjectProperty = "http://xmlns.com/foaf/0.1/homepage"
 
-	// IcqChatID is foaf:icqChatID, "ICQ chat ID".
-	//
-	// An ICQ chat ID
-	IcqChatID owl.ObjectProperty = "http://xmlns.com/foaf/0.1/icqChatID"
-
 	// Img is foaf:img, "image".
 	//
 	// An image that can be used to represent some thing (ie. those depictions
@@ -180,11 +170,6 @@ const (
 	//
 	// A document that this thing is the primary topic of.
 	IsPrimaryTopicOf owl.ObjectProperty = "http://xmlns.com/foaf/0.1/isPrimaryTopicOf"
-
-	// JabberID is foaf:jabberID, "jabber ID".
-	//
-	// A jabber ID for something.
-	JabberID owl.ObjectProperty = "http://xmlns.com/foaf/0.1/jabberID"
 
 	// Knows is foaf:knows.
 	//
@@ -215,22 +200,10 @@ const (
 	// one individual that ever has any particular value for foaf:mbox.
 	Mbox owl.ObjectProperty = "http://xmlns.com/foaf/0.1/mbox"
 
-	// MboxSha1sum is foaf:mbox_sha1sum, "sha1sum of a personal mailbox URI
-	// name".
-	//
-	// The sha1sum of the URI of an Internet mailbox associated with exactly
-	// one owner, the first owner of the mailbox.
-	MboxSha1sum owl.ObjectProperty = "http://xmlns.com/foaf/0.1/mbox_sha1sum"
-
 	// Member is foaf:member.
 	//
 	// Indicates a member of a Group
 	Member owl.ObjectProperty = "http://xmlns.com/foaf/0.1/member"
-
-	// MsnChatID is foaf:msnChatID, "MSN chat ID".
-	//
-	// An MSN chat ID
-	MsnChatID owl.ObjectProperty = "http://xmlns.com/foaf/0.1/msnChatID"
 
 	// Openid is foaf:openid.
 	//
@@ -310,11 +283,6 @@ const (
 	// A workplace homepage of some person; the homepage of an organization
 	// they work for.
 	WorkplaceHomepage owl.ObjectProperty = "http://xmlns.com/foaf/0.1/workplaceHomepage"
-
-	// YahooChatID is foaf:yahooChatID, "Yahoo chat ID".
-	//
-	// A Yahoo chat ID
-	YahooChatID owl.ObjectProperty = "http://xmlns.com/foaf/0.1/yahooChatID"
 )
 
 // Data properties.
@@ -329,10 +297,10 @@ const (
 	// The age in years of some agent.
 	Age owl.DataProperty = "http://xmlns.com/foaf/0.1/age"
 
-	// AimChatIDDataProperty is foaf:aimChatID, "AIM chat ID".
+	// AimChatID is foaf:aimChatID, "AIM chat ID".
 	//
 	// An AIM chat ID
-	AimChatIDDataProperty owl.DataProperty = "http://xmlns.com/foaf/0.1/aimChatID"
+	AimChatID owl.DataProperty = "http://xmlns.com/foaf/0.1/aimChatID"
 
 	// Birthday is foaf:birthday.
 	//
@@ -382,32 +350,32 @@ const (
 	// The given name of some person.
 	Givenname owl.DataProperty = "http://xmlns.com/foaf/0.1/givenname"
 
-	// IcqChatIDDataProperty is foaf:icqChatID, "ICQ chat ID".
+	// IcqChatID is foaf:icqChatID, "ICQ chat ID".
 	//
 	// An ICQ chat ID
-	IcqChatIDDataProperty owl.DataProperty = "http://xmlns.com/foaf/0.1/icqChatID"
+	IcqChatID owl.DataProperty = "http://xmlns.com/foaf/0.1/icqChatID"
 
-	// JabberIDDataProperty is foaf:jabberID, "jabber ID".
+	// JabberID is foaf:jabberID, "jabber ID".
 	//
 	// A jabber ID for something.
-	JabberIDDataProperty owl.DataProperty = "http://xmlns.com/foaf/0.1/jabberID"
+	JabberID owl.DataProperty = "http://xmlns.com/foaf/0.1/jabberID"
 
 	// LastName is foaf:lastName.
 	//
 	// The last name of a person.
 	LastName owl.DataProperty = "http://xmlns.com/foaf/0.1/lastName"
 
-	// MboxSha1sumDataProperty is foaf:mbox_sha1sum, "sha1sum of a personal
-	// mailbox URI name".
+	// MboxSha1sum is foaf:mbox_sha1sum, "sha1sum of a personal mailbox URI
+	// name".
 	//
 	// The sha1sum of the URI of an Internet mailbox associated with exactly
 	// one owner, the first owner of the mailbox.
-	MboxSha1sumDataProperty owl.DataProperty = "http://xmlns.com/foaf/0.1/mbox_sha1sum"
+	MboxSha1sum owl.DataProperty = "http://xmlns.com/foaf/0.1/mbox_sha1sum"
 
-	// MsnChatIDDataProperty is foaf:msnChatID, "MSN chat ID".
+	// MsnChatID is foaf:msnChatID, "MSN chat ID".
 	//
 	// An MSN chat ID
-	MsnChatIDDataProperty owl.DataProperty = "http://xmlns.com/foaf/0.1/msnChatID"
+	MsnChatID owl.DataProperty = "http://xmlns.com/foaf/0.1/msnChatID"
 
 	// MyersBriggs is foaf:myersBriggs.
 	//
@@ -456,10 +424,10 @@ const (
 	// Title (Mr, Mrs, Ms, Dr. etc)
 	Title owl.DataProperty = "http://xmlns.com/foaf/0.1/title"
 
-	// YahooChatIDDataProperty is foaf:yahooChatID, "Yahoo chat ID".
+	// YahooChatID is foaf:yahooChatID, "Yahoo chat ID".
 	//
 	// A Yahoo chat ID
-	YahooChatIDDataProperty owl.DataProperty = "http://xmlns.com/foaf/0.1/yahooChatID"
+	YahooChatID owl.DataProperty = "http://xmlns.com/foaf/0.1/yahooChatID"
 )
 
 // Annotation properties.
@@ -486,11 +454,12 @@ func Ontology() *owl.Ontology {
 	return o
 }
 
-// Vocabulary returns the terms with their labels and definitions, as the
-// closed set an untrusted axiom can be validated against. It is built once and
-// is safe to share.
+// Vocabulary returns the terms this vocabulary declares, with their labels and
+// definitions, as the closed set an untrusted axiom can be validated against.
+// Terms it only references — another vocabulary's, named to relate the two —
+// are not part of it. It is built once and is safe to share.
 func Vocabulary() *owl.Vocabulary { return vocabulary() }
 
 var vocabulary = sync.OnceValue(func() *owl.Vocabulary {
-	return owl.NewVocabulary(Ontology())
+	return owl.NewVocabulary(Ontology(), owl.DeclaredOnly())
 })

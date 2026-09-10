@@ -30,6 +30,7 @@ import (
 
 	"gowl/lint"
 	"gowl/owl"
+	"gowl/vocab"
 )
 
 const (
@@ -130,6 +131,27 @@ func fail(err error) int {
 
 // --- lint -------------------------------------------------------------------
 
+// standardVocabularies are the vocabularies gowl lint suggests reusing, in the
+// order it would rather reuse them. The first to name a term wins, so the
+// precise ones come first and schema.org, which names nearly everything, goes
+// last.
+var standardVocabularies = []string{
+	"rdf", "rdfs", "skos", "skosxl", "dcterms", "dc",
+	"foaf", "prov", "org", "time", "dcat", "schema",
+}
+
+// standardTermsRule builds the prefer-standard-term rule over everything in
+// vocab/. Its index is built on first use, so listing the rules stays cheap.
+func standardTermsRule() lint.Rule {
+	refs := make([]*owl.Vocabulary, 0, len(standardVocabularies))
+	for _, name := range standardVocabularies {
+		if e, ok := vocab.ByPrefix(name); ok {
+			refs = append(refs, e.Vocabulary())
+		}
+	}
+	return lint.PreferStandardTerms(refs...)
+}
+
 func cmdLint(args []string) int {
 	fs := flag.NewFlagSet("lint", flag.ContinueOnError)
 	disable := fs.String("disable", "", "comma-separated rule names to skip")
@@ -141,7 +163,7 @@ func cmdLint(args []string) int {
 		return exitProblem
 	}
 
-	rules := lint.Default()
+	rules := append(lint.Default(), standardTermsRule())
 	if *list {
 		if *jsonOut {
 			writeJSON(rulesJSON(rules))

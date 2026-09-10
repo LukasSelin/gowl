@@ -108,6 +108,10 @@ func punnedEntity(o *owl.Ontology) []Finding {
 	return out
 }
 
+// missingLabel asks for an rdfs:label on the terms an ontology defines. A term
+// it only references belongs to somebody else, whose job the label is —
+// annotating another vocabulary's IRI from here would be worse than the
+// omission — and undeclared-entity already has something to say about it.
 func missingLabel(o *owl.Ontology) []Finding {
 	var out []Finding
 	for _, e := range o.Signature() {
@@ -116,7 +120,7 @@ func missingLabel(o *owl.Ontology) []Finding {
 		default:
 			continue
 		}
-		if builtin(e) || o.Label(e) != "" {
+		if builtin(e) || !o.IsDeclared(e) || o.Label(e) != "" {
 			continue
 		}
 		out = append(out, Finding{

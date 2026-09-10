@@ -83,6 +83,21 @@ func TestMissingLabel(t *testing.T) {
 	}
 }
 
+// A label belongs to whoever defines the term. An ontology that merely
+// references foaf:Person should not be told to label it — that annotation
+// would be an assertion about another vocabulary's IRI — and undeclared-entity
+// already reports the reference.
+func TestMissingLabelIgnoresForeignTerms(t *testing.T) {
+	o := parse(t,
+		"Declaration(Class(:A))",
+		`AnnotationAssertion(rdfs:label :A "A"^^xsd:string)`,
+		"SubClassOf(:A <http://xmlns.com/foaf/0.1/Person>)",
+	)
+	if f := only(t, o, "missing-label"); len(f) != 0 {
+		t.Errorf("got %v, want nothing flagged", f)
+	}
+}
+
 func TestDeprecatedReference(t *testing.T) {
 	o := parse(t,
 		"Declaration(Class(:Old))",
