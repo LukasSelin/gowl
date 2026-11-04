@@ -486,6 +486,7 @@ gowl classify [-axioms] [-explain "sub super"] [-unsatisfiable] [-fail-on-incohe
 gowl fmt     [-w] [-canonical] file.ofn
 gowl stats   [-json] file.ofn
 gowl gocode  [-o file.ofn] [module-dir]
+gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
 ```
 
 `classify` runs the EL reasoner. `-axioms` writes the inferred taxonomy as an
@@ -495,7 +496,9 @@ form to put in CI.
 
 `gocode` works in the other direction. It writes an ontology describing a Go
 module's code, which the other commands can then read. See
-[Describing a Go module](#describing-a-go-module).
+[Describing a Go module](#describing-a-go-module). `sprawl` runs it twice, on
+the working tree and on a base commit, to check what a change did to the
+module's types. See [Catching sprawl](#catching-sprawl).
 
 Exit status is 0 on success, 1 when a check fails (lint findings at or above
 `-fail-on`, or a non-empty diff under `-exit-code`), and 2 on a usage or parse
@@ -513,6 +516,7 @@ gowl diff -json old.ofn new.ofn | jq '.counts'
 gowl profile -json onto.ofn | jq -r '.in_profiles[]'
 gowl stats -json onto.ofn | jq '.counts.classes'
 gowl lint -list -json | jq -r '.rules[].name'
+gowl sprawl -json | jq -r '.added[]'
 ```
 
 Three properties make this safe to script against:
@@ -591,6 +595,7 @@ what the linter runs on here.
   that interface. gowl's Go types for OWL therefore form an OWL class
   hierarchy themselves.
 - Struct fields become object or data properties, with domains and ranges.
+  An embedded field counts, under its type's name.
 - Packages become `:Package` individuals, linked by `:imports`.
 
 ```bash
@@ -666,6 +671,83 @@ is loaded once. A cobra command's `context.Context` is therefore the same type
 as the module's own. Loading the standard library and third-party code through
 two importers would produce two different `context` packages, and the module
 would fail to type-check.
+
+### Catching sprawl
+
+A codebase sprawls when a change adds new types next to the existing ones
+instead of building on them: a struct copied under a new name, or a type
+that nothing else uses. `gowl sprawl` looks for both in a change. It runs
+`gocode` on the module twice, once on the working tree and once at `-base`
+(default `HEAD`), and compares the two ontologies. The base version is copied
+out with `git archive`, so the working tree, the index and other worktrees are
+not touched.
+
+- **`same-shape-type`** (warning) reports a type the change added or reshaped
+  whose fields match another type's. Fields are compared by type and not by
+  name, because a copy is usually renamed. The type may have the same fields
+  as the other one (reuse it), every field of it plus more (embed it), or only
+  fields it also has (use it instead). A match has to share at least two
+  fields, and one of them has to be of a type the module defines.
+- **`new-orphan`** (info) reports a new type that connects to no type that
+  existed before. It satisfies none of the module's interfaces, no type
+  satisfies it, and no field links it to an existing type in either direction.
+
+On the module from the tests, with `Holding` and `Memo` added to `Item` and
+`Stock`:
+
+```
+$ gowl sprawl
+compared with HEAD (ea4c786a2d2d): 2 new type(s), 0 changed
+  new:     :store.Holding, :store.Memo
+
+warning: same-shape-type: :store.Holding has the same fields as :store.Stock (:store.Item, xsd:integer); consider reusing it
+info: new-orphan: new type :store.Memo connects to no type that existed before: no interface, implementation or field links it to one
+
+2 finding(s)
+```
+
+The checks look only at what the change did. Checked as if every type were
+new, 32 of gowl's own types would match another of its types. Most are OWL
+types: `ObjectSomeValuesFrom` and `ObjectAllValuesFrom` have the same fields
+because the OWL specification gives them the same arguments. Reporting all of
+those on every run would hide the one copy a change has just added. For the
+same reason, a match that already held before the change is not reported
+again just because one of its two types changed.
+
+The checks see only what `gocode` records:
+
+- exported types;
+- fields whose type is a module type (directly, or through a pointer or slice)
+  or a basic type.
+
+Maps, functions and methods are not recorded. A type that is only ever a
+function parameter, such as an options struct, therefore looks unconnected,
+which is why `new-orphan` is only `info`. Duplicate functions are a job for a
+clone detector.
+
+Nothing reaches the default `-fail-on error`, so in CI pass `-fail-on warning`
+and a base that covers the whole branch:
+
+```bash
+gowl sprawl -base origin/main -fail-on warning
+```
+
+A run takes about 3.5 seconds on this repository. Most of that is
+type-checking the base copy.
+
+#### Before an agent finishes
+
+[`.claude/hooks/sprawl-check.sh`](.claude/hooks/sprawl-check.sh) is a Claude
+Code `Stop` hook, registered in [`.claude/settings.json`](.claude/settings.json).
+When a turn ends with Go changes since `HEAD`, or since `GOWL_SPRAWL_BASE` if
+that is set, the hook runs `gowl sprawl` and passes any findings back to the
+agent. The agent then reworks the change to reuse, embed or implement what is
+already there, or tells the user why a new type is the right call.
+
+`-seen` records each finding in a per-session file, so each finding is
+reported only once. That also means the hook cannot keep the agent looping. A
+turn whose Go changes were already checked costs about half a second. If the
+tree does not build, the hook skips the check.
 
 ### Asking questions of Kubernetes' API types
 
@@ -853,7 +935,8 @@ Not yet:
 | `internal/rdf/` | Turtle and RDF/XML readers (generator only) |
 | `internal/rdfowl/` | mapping RDF triples onto the structural model |
 | `internal/vocabgen/` | writing a Go package for one vocabulary |
-| `internal/gocode/` | describing a Go module's code as an ontology (`gowl gocode`) |
+| `internal/gocode/` | describing a Go module's code as an ontology (`gowl gocode`), and comparing two versions of it (`gowl sprawl`) |
+| `.claude/hooks/` | Claude Code hooks: ontology checks on `.ofn` edits, and `gowl sprawl` before a turn ends |
 | `el/normalize.go` | rewriting axioms into EL normal form |
 | `el/classify.go` | the completion rules and saturation |
 | `el/query.go` | subsumption queries, taxonomy, explanations |

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"gowl/el"
+	"gowl/internal/gocode"
 	"gowl/lint"
 	"gowl/owl"
 )
@@ -395,5 +396,37 @@ func statsJSON(file string, o *owl.Ontology, kinds []string, counts map[string]i
 			Datatypes:        len(o.Datatypes()),
 		},
 		AxiomTypes: types,
+	}
+}
+
+// --- sprawl -----------------------------------------------------------------
+
+type sprawlDoc struct {
+	Dir string `json:"dir"`
+	// Base is the -base flag as given; BaseCommit is what it resolved to.
+	Base       string `json:"base"`
+	BaseCommit string `json:"base_commit"`
+	// Added and Changed are class IRIs: the types the change introduced, and
+	// the existing types whose fields it changed.
+	Added    []string     `json:"added"`
+	Changed  []string     `json:"changed"`
+	Findings []findingDoc `json:"findings"`
+	// AlreadyReported counts the findings -seen left out. The summary covers
+	// only the findings reported.
+	AlreadyReported int         `json:"already_reported"`
+	Summary         lintSummary `json:"summary"`
+}
+
+func sprawlJSON(dir, base, commit string, o *owl.Ontology, d gocode.Delta, findings []lint.Finding, already int, threshold lint.Severity) sprawlDoc {
+	l := lintJSON(dir, o, findings, threshold)
+	return sprawlDoc{
+		Dir:             dir,
+		Base:            base,
+		BaseCommit:      commit,
+		Added:           renderClasses(o, d.Added),
+		Changed:         renderClasses(o, d.Changed),
+		Findings:        l.Findings,
+		AlreadyReported: already,
+		Summary:         l.Summary,
 	}
 }

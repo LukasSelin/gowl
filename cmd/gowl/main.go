@@ -10,10 +10,11 @@
 //	gowl fmt     [-w] [-canonical] file.ofn
 //	gowl stats   [-json] file.ofn
 //	gowl gocode  [-o file.ofn] [module-dir]
+//	gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
 //
-// Exit status is 0 on success, 1 when a check fails (lint findings at or above
-// the fail threshold, or a non-empty diff under -exit-code), and 2 on a usage
-// or I/O error.
+// Exit status is 0 on success, 1 when a check fails (lint or sprawl findings at
+// or above the fail threshold, or a non-empty diff under -exit-code), and 2 on
+// a usage or I/O error.
 //
 // Every command except fmt and gocode takes -json, which writes one JSON object
 // to stdout instead of text — including on failure, so a caller that parses
@@ -63,6 +64,8 @@ func run(args []string) int {
 		return cmdFmt(args[1:])
 	case "stats":
 		return cmdStats(args[1:])
+	case "sprawl":
+		return cmdSprawl(args[1:])
 	case "gocode":
 		return cmdGoCode(args[1:])
 	case "help", "-h", "--help":
@@ -85,6 +88,7 @@ func usage() {
   gowl fmt     [-w] [-canonical] file.ofn
   gowl stats   [-json] file.ofn
   gowl gocode  [-o file.ofn] [module-dir]
+  gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
 
 classify runs the OWL 2 EL reasoner: it infers the class hierarchy, finds
 classes that cannot have instances, and explains why a subsumption holds.
@@ -92,6 +96,11 @@ classes that cannot have instances, and explains why a subsumption holds.
 gocode describes a Go module's code as an ontology: exported types become
 classes, struct fields properties, and packages individuals. Give it the
 directory holding the module's go.mod (default: the current directory).
+
+sprawl runs gocode on the module and on the same module at -base (default
+HEAD), and reports what the change added beside the existing types rather
+than through them: a type whose fields repeat another's, and a new type that
+connects to nothing that was there.
 
 Every command except fmt and gocode takes -json for machine-readable output.
 Run "gowl <command> -h" for the flags of one command.
