@@ -574,6 +574,63 @@ rules := append(lint.Default(), lint.Rule{
 findings := lint.Run(o, rules)
 ```
 
+### Linting gowl itself
+
+[`examples/self`](examples/self/main.go) type-checks this repository and
+describes it as an OWL ontology, built with gowl's own builders.
+[`examples/self/gowl.ofn`](examples/self/gowl.ofn) is the result, and it is
+what the linter runs on here.
+
+- Each exported Go type becomes a class.
+- A type that satisfies one of the module's interfaces becomes a `SubClassOf`
+  that interface. gowl's Go types for OWL therefore form an OWL class
+  hierarchy themselves.
+- Struct fields become object or data properties, with domains and ranges.
+- Packages become `:Package` individuals, linked by `:imports`.
+
+```bash
+go run ./examples/self > examples/self/gowl.ofn
+gowl lint -fail-on info examples/self/gowl.ofn
+```
+
+```
+info: orphan-class: class :el.Classification has no asserted superclass or equivalence
+info: orphan-class: class :lint.Rule has no asserted superclass or equivalence
+info: orphan-class: class :owl.ClassBuilder has no asserted superclass or equivalence
+...
+22 finding(s)
+```
+
+_(IRIs abbreviated here; the CLI prints them in full.)_
+
+None of these findings is a warning or an error. The 22 `orphan-class` notes
+are the types that satisfy no interface in the module: the builders, option
+structs, `owl.Index`, and the root interfaces `owl.Node` and `rdf.Term`. They
+are accurate, and at `info` they do not fail the default run.
+
+The first run did not look like this. The linter reported 102 `duplicate-axiom`
+warnings. They came from a bug in the generator: it called `o.Define(class)`
+again for every `SubClassOf` edge, and `Define` declares the class each time it
+is called. The fix was to keep one builder per class.
+[`main_test.go`](examples/self/main_test.go) keeps it that way. The test fails
+when the committed `gowl.ofn` no longer matches the code, and it fails on any
+finding at `warning` or above.
+
+The other commands work on the same file:
+
+```
+$ gowl stats examples/self/gowl.ofn
+classes             115
+object properties   128
+data properties     33
+individuals         22
+
+$ gowl classify -explain ":owl.SubClassOf :owl.Node" examples/self/gowl.ofn
+:owl.SubClassOf ⊑ :owl.Node follows from:
+  SubClassOf(:owl.Axiom :owl.Node)
+  SubClassOf(:owl.SubClassOf :owl.Axiom)
+```
+
 ## Profiles
 
 `owl.CheckProfile(o, owl.ProfileEL)` returns every reason an ontology falls
@@ -677,6 +734,7 @@ Not yet:
 | `lint/` | the lint rule engine and built-in rules |
 | `cmd/gowl/` | the command-line tool |
 | `cmd/gowl/json.go` | the `-json` document shapes |
+| `examples/self/` | this repository described as an ontology, linted by its own linter |
 | `owl/testdata/` | corpus fixtures and their golden renderings |
 | `owl/walk.go` | entity traversal, `Signature`, `References` |
 
@@ -686,6 +744,7 @@ go test ./owl -bench . -benchtime 100x         # benchmarks
 go test ./owl -run TestGoldenRoundTrip -update # regenerate golden files
 go test ./owl -fuzz FuzzParseFunctional        # fuzz the parser
 go generate ./vocab                            # refetch and regenerate vocab/
+go run ./examples/self > examples/self/gowl.ofn # regenerate the self-description
 ```
 
 `owl/testdata` holds loosely formatted fixtures next to their golden renderings,
