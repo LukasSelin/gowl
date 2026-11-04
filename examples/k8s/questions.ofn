@@ -1,0 +1,72 @@
+# Questions about Kubernetes' API types, written as OWL 2 EL defined classes.
+#
+# Each EquivalentClasses below is a question. examples/k8s merges this file into
+# the ontology it generates from the Go source, and classifying that ontology
+# answers every question at once: the types placed under :RunsPods are the kinds
+# that run pods. gowl classify -explain shows the field path behind any answer.
+#
+# The properties come from the generator: :embeds and :hasField are value
+# fields, :contains is their transitive closure, and :mayContain also follows
+# pointers, slices and maps, which may be nil or empty.
+
+Prefix(:=<https://github.com/LukasSelin/gowl/examples/k8s#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+Prefix(metav1:=<https://pkg.go.dev/k8s.io/apimachinery/pkg/apis/meta/v1#>)
+Prefix(corev1:=<https://pkg.go.dev/k8s.io/api/core/v1#>)
+
+Ontology(<https://github.com/LukasSelin/gowl/examples/k8s/questions>
+
+    # What is an API object, and what is a list of them?
+    Declaration(Class(:ObjectKind))
+    AnnotationAssertion(rdfs:label :ObjectKind "object kind")
+    AnnotationAssertion(rdfs:comment :ObjectKind "A top-level API object: it embeds TypeMeta and ObjectMeta.")
+    EquivalentClasses(:ObjectKind ObjectIntersectionOf(
+        ObjectSomeValuesFrom(:embeds metav1:TypeMeta)
+        ObjectSomeValuesFrom(:embeds metav1:ObjectMeta)))
+
+    Declaration(Class(:ListKind))
+    AnnotationAssertion(rdfs:label :ListKind "list kind")
+    AnnotationAssertion(rdfs:comment :ListKind "A list of API objects: it embeds TypeMeta and ListMeta.")
+    EquivalentClasses(:ListKind ObjectIntersectionOf(
+        ObjectSomeValuesFrom(:embeds metav1:TypeMeta)
+        ObjectSomeValuesFrom(:embeds metav1:ListMeta)))
+
+    # A rule rather than a question: nothing is both. A type that was both would
+    # be unsatisfiable, and -answers lists it as a violation.
+    DisjointClasses(:ObjectKind :ListKind)
+
+    # Which kinds run pods?
+    Declaration(Class(:RunsPods))
+    AnnotationAssertion(rdfs:label :RunsPods "runs pods")
+    AnnotationAssertion(rdfs:comment :RunsPods "An object kind that always carries a pod spec, through value fields only.")
+    EquivalentClasses(:RunsPods ObjectIntersectionOf(:ObjectKind
+        ObjectSomeValuesFrom(:contains corev1:PodSpec)))
+
+    Declaration(Class(:MayRunPods))
+    AnnotationAssertion(rdfs:label :MayRunPods "may run pods")
+    AnnotationAssertion(rdfs:comment :MayRunPods "An object kind whose definition reaches a pod spec, possibly through a field that may be nil or empty.")
+    EquivalentClasses(:MayRunPods ObjectIntersectionOf(:ObjectKind
+        ObjectSomeValuesFrom(:mayContain corev1:PodSpec)))
+
+    # Which kinds can mount a Secret as a volume?
+    Declaration(Class(:MountsSecrets))
+    AnnotationAssertion(rdfs:label :MountsSecrets "mounts secrets")
+    AnnotationAssertion(rdfs:comment :MountsSecrets "An object kind whose definition reaches a Secret volume source.")
+    EquivalentClasses(:MountsSecrets ObjectIntersectionOf(:ObjectKind
+        ObjectSomeValuesFrom(:mayContain corev1:SecretVolumeSource)))
+
+    # Which kinds select other objects by label?
+    Declaration(Class(:SelectsByLabel))
+    AnnotationAssertion(rdfs:label :SelectsByLabel "selects by label")
+    AnnotationAssertion(rdfs:comment :SelectsByLabel "An object kind whose definition reaches a label selector.")
+    EquivalentClasses(:SelectsByLabel ObjectIntersectionOf(:ObjectKind
+        ObjectSomeValuesFrom(:mayContain metav1:LabelSelector)))
+
+    # Which kinds have adopted the shared condition type?
+    Declaration(Class(:UsesStandardConditions))
+    AnnotationAssertion(rdfs:label :UsesStandardConditions "uses standard conditions")
+    AnnotationAssertion(rdfs:comment :UsesStandardConditions "An object kind whose definition reaches metav1.Condition rather than only a condition type of its own.")
+    EquivalentClasses(:UsesStandardConditions ObjectIntersectionOf(:ObjectKind
+        ObjectSomeValuesFrom(:mayContain metav1:Condition)))
+)
