@@ -16,7 +16,8 @@
 //     hierarchy for OWL is itself an OWL class hierarchy;
 //   - an exported struct field whose type is one of those classes becomes an
 //     object property with the struct as domain and the field type as range,
-//     and a field of a basic type becomes a data property with an XSD range;
+//     and a field of a basic type becomes a data property with an XSD range.
+//     An embedded field counts, under its type's name;
 //   - every package is an individual of :Package, linked by :imports to the
 //     module packages it imports, and every class is tied to its package with
 //     the annotation :definedIn.
@@ -335,8 +336,10 @@ func Build(root string) (*owl.Ontology, error) {
 			continue
 		}
 		for i := 0; i < st.NumFields(); i++ {
+			// An embedded field is a field named after its type, and embedding
+			// is how one type reuses another, so it is a relation like any other.
 			f := st.Field(i)
-			if !f.Exported() || f.Embedded() {
+			if !f.Exported() {
 				continue
 			}
 			name := ":" + qualified(t.obj) + "." + f.Name()
