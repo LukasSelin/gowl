@@ -485,6 +485,7 @@ gowl profile [-v] [-json] file.ofn
 gowl classify [-axioms] [-explain "sub super"] [-unsatisfiable] [-fail-on-incoherent] [-json] file.ofn
 gowl fmt     [-w] [-canonical] file.ofn
 gowl stats   [-json] file.ofn
+gowl gocode  [-o file.ofn] [module-dir]
 ```
 
 `classify` runs the EL reasoner. `-axioms` writes the inferred taxonomy as an
@@ -492,15 +493,19 @@ ontology document, `-explain` justifies one subsumption, and
 `-fail-on-incoherent` exits 1 when a class cannot have instances - which is the
 form to put in CI.
 
+`gocode` works in the other direction. It writes an ontology describing a Go
+module's code, which the other commands can then read. See
+[Describing a Go module](#describing-a-go-module).
+
 Exit status is 0 on success, 1 when a check fails (lint findings at or above
 `-fail-on`, or a non-empty diff under `-exit-code`), and 2 on a usage or parse
 error — so `gowl lint` and `gowl diff -exit-code` drop straight into CI.
 
 ### JSON output
 
-Every command except `fmt` takes `-json` and then writes exactly one JSON object
-to stdout. `fmt` has none because its output is an ontology document, not a
-report.
+Every command except `fmt` and `gocode` takes `-json` and then writes exactly one
+JSON object to stdout. Those two have none because their output is an ontology
+document, not a report.
 
 ```bash
 gowl lint -json onto.ofn | jq -r '.findings[] | select(.severity=="error") | .message'
@@ -631,6 +636,37 @@ $ gowl classify -explain ":owl.SubClassOf :owl.Node" examples/self/gowl.ofn
   SubClassOf(:owl.SubClassOf :owl.Axiom)
 ```
 
+### Describing a Go module
+
+The generator behind `examples/self` lives in
+[`internal/gocode`](internal/gocode/gocode.go), and `gowl gocode` runs it on any
+Go module. Give it the directory that holds the module's `go.mod`; it defaults
+to the current directory:
+
+```bash
+gowl gocode ../doppel > doppel.ofn
+gowl gocode -o doppel.ofn ../doppel   # the same, without shell redirection
+gowl lint doppel.ofn
+```
+
+The module path in `go.mod` is plain `gowl`, so `go install` does not work
+against the GitHub URL. To put the command on your `PATH`, clone the repository
+and run `go install ./cmd/gowl`.
+
+The ontology is named by the module path, here `<https://github.com/LukasSelin/doppel>`.
+The mapping is the same as for gowl. The module has to build. Its own packages
+are read from source. Everything they import is read from the export data that
+`go list -export` produces inside that module, standard library and
+third-party modules alike, so its dependencies must already be in the module
+cache. Directories that hold their own `go.mod` are other modules and are
+skipped, as the go tool skips them.
+
+One importer serves the standard library and the dependencies, so each package
+is loaded once. A cobra command's `context.Context` is therefore the same type
+as the module's own. Loading the standard library and third-party code through
+two importers would produce two different `context` packages, and the module
+would fail to type-check.
+
 ## Profiles
 
 `owl.CheckProfile(o, owl.ProfileEL)` returns every reason an ontology falls
@@ -728,6 +764,7 @@ Not yet:
 | `internal/rdf/` | Turtle and RDF/XML readers (generator only) |
 | `internal/rdfowl/` | mapping RDF triples onto the structural model |
 | `internal/vocabgen/` | writing a Go package for one vocabulary |
+| `internal/gocode/` | describing a Go module's code as an ontology (`gowl gocode`) |
 | `el/normalize.go` | rewriting axioms into EL normal form |
 | `el/classify.go` | the completion rules and saturation |
 | `el/query.go` | subsumption queries, taxonomy, explanations |

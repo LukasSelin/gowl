@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"gowl/internal/gocode"
 	"gowl/lint"
 	"gowl/owl"
 )
@@ -15,7 +16,7 @@ import (
 //
 //	go run ./examples/self > examples/self/gowl.ofn
 func TestCommittedOntologyIsCurrent(t *testing.T) {
-	o, err := Build("../..")
+	o, err := gocode.Build("../..")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -37,7 +38,7 @@ func TestCommittedOntologyIsCurrent(t *testing.T) {
 // findings are expected — they are the types that satisfy no interface of the
 // module, such as the builders and option structs.
 func TestSelfLintsClean(t *testing.T) {
-	o, err := Build("../..")
+	o, err := gocode.Build("../..")
 	if err != nil {
 		t.Fatal(err)
 	}

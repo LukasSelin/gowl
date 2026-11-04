@@ -1,4 +1,5 @@
-// Command gowl inspects OWL 2 ontologies written in functional syntax.
+// Command gowl inspects OWL 2 ontologies written in functional syntax, and
+// writes one describing a Go module's code.
 //
 // Usage:
 //
@@ -8,16 +9,17 @@
 //	gowl classify [-axioms] [-explain "sub super"] [-json] file.ofn
 //	gowl fmt     [-w] [-canonical] file.ofn
 //	gowl stats   [-json] file.ofn
+//	gowl gocode  [-o file.ofn] [module-dir]
 //
 // Exit status is 0 on success, 1 when a check fails (lint findings at or above
 // the fail threshold, or a non-empty diff under -exit-code), and 2 on a usage
 // or I/O error.
 //
-// Every command except fmt takes -json, which writes one JSON object to stdout
-// instead of text — including on failure, so a caller that parses stdout always
-// gets a document. Exit statuses are the same in both modes. fmt has no -json
-// because its output is an ontology document, not a report. The document shapes
-// live in json.go.
+// Every command except fmt and gocode takes -json, which writes one JSON object
+// to stdout instead of text — including on failure, so a caller that parses
+// stdout always gets a document. Exit statuses are the same in both modes. fmt
+// and gocode have no -json because their output is an ontology document, not a
+// report. The document shapes live in json.go.
 package main
 
 import (
@@ -61,6 +63,8 @@ func run(args []string) int {
 		return cmdFmt(args[1:])
 	case "stats":
 		return cmdStats(args[1:])
+	case "gocode":
+		return cmdGoCode(args[1:])
 	case "help", "-h", "--help":
 		usage()
 		return exitOK
@@ -80,11 +84,16 @@ func usage() {
   gowl classify [-axioms] [-explain "sub super"] [-unsatisfiable] [-json] file.ofn
   gowl fmt     [-w] [-canonical] file.ofn
   gowl stats   [-json] file.ofn
+  gowl gocode  [-o file.ofn] [module-dir]
 
 classify runs the OWL 2 EL reasoner: it infers the class hierarchy, finds
 classes that cannot have instances, and explains why a subsumption holds.
 
-Every command except fmt takes -json for machine-readable output.
+gocode describes a Go module's code as an ontology: exported types become
+classes, struct fields properties, and packages individuals. Give it the
+directory holding the module's go.mod (default: the current directory).
+
+Every command except fmt and gocode takes -json for machine-readable output.
 Run "gowl <command> -h" for the flags of one command.
 `)
 }
