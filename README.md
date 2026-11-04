@@ -603,15 +603,16 @@ info: orphan-class: class :el.Classification has no asserted superclass or equiv
 info: orphan-class: class :lint.Rule has no asserted superclass or equivalence
 info: orphan-class: class :owl.ClassBuilder has no asserted superclass or equivalence
 ...
-22 finding(s)
+30 finding(s)
 ```
 
 _(IRIs abbreviated here; the CLI prints them in full.)_
 
-None of these findings is a warning or an error. The 22 `orphan-class` notes
+None of these findings is a warning or an error. The 30 `orphan-class` notes
 are the types that satisfy no interface in the module: the builders, option
-structs, `owl.Index`, and the root interfaces `owl.Node` and `rdf.Term`. They
-are accurate, and at `info` they do not fail the default run.
+structs, `owl.Index`, the example programs' result types, and the root
+interfaces `owl.Node` and `rdf.Term`. They are accurate, and at `info` they do
+not fail the default run.
 
 The first run did not look like this. The linter reported 102 `duplicate-axiom`
 warnings. They came from a bug in the generator: it called `o.Define(class)`
@@ -625,10 +626,10 @@ The other commands work on the same file:
 
 ```
 $ gowl stats examples/self/gowl.ofn
-classes             115
-object properties   128
-data properties     33
-individuals         22
+classes             123
+object properties   141
+data properties     46
+individuals         25
 
 $ gowl classify -explain ":owl.SubClassOf :owl.Node" examples/self/gowl.ofn
 :owl.SubClassOf ⊑ :owl.Node follows from:
@@ -756,6 +757,41 @@ being absent, such as "which kinds have no selector". It also cannot count
 anything, or find cycles. [`main_test.go`](examples/k8s/main_test.go) runs the
 real questions against a miniature of the API types under `testdata`.
 
+### Limiting sprawl in a change
+
+[doppel](https://github.com/LukasSelin/doppel) finds functions that already
+exist. [`examples/sprawl`](examples/sprawl/main.go) gates the rest of a change:
+the packages it adds, the imports between them, and the exported types it
+mints. It reads two `gowl gocode` descriptions, the base and the changed tree,
+and checks them against an architecture written in OWL 2 EL. Each package sits
+in a layer, and each rule is a `DisjointClasses` axiom, such as
+`DisjointClasses(:Engine ObjectSomeValuesFrom(:dependsOn :Presentation))`.
+
+[The walkthrough](examples/sprawl/README.md) adds `--format sarif` to doppel
+twice. The quick version adds a package and 13 types. One import of that
+package makes four engine packages depend on presentation:
+
+```
+rule violations (4)
+  The engine never depends on presentation.
+    internal/analyzer → internal/sarif  new
+    internal/family → internal/analyzer → internal/sarif  new
+    internal/snapshot → internal/analyzer → internal/sarif  new
+    internal/identity → internal/snapshot → internal/analyzer → internal/sarif  new
+
+new types with twins (2) — reuse the existing type, or say why not
+  sarif.Function  ~ identity.Function  (same name, 4 of 4 fields: File, Line, Name, Package)
+                  ~ snapshot.Unit  (4 of 4 fields: File, Line, Name, Package)
+  ...
+```
+
+The reworked version puts the writer in doppel's existing presentation package
+and reads `snapshot.Unit` directly. Its footprint is zero packages, imports and
+types. [`doppel.ofn`](examples/sprawl/doppel.ofn) is the architecture. Both
+versions of the feature are in
+[`doppel-sarif/`](examples/sprawl/doppel-sarif) as patches against doppel
+`9807c32`.
+
 ## Profiles
 
 `owl.CheckProfile(o, owl.ProfileEL)` returns every reason an ontology falls
@@ -862,6 +898,7 @@ Not yet:
 | `cmd/gowl/json.go` | the `-json` document shapes |
 | `examples/self/` | this repository described as an ontology, linted by its own linter |
 | `examples/k8s/` | Go type structure for an EL reasoner, with questions about Kubernetes' API types |
+| `examples/sprawl/` | a gate on the packages, imports and types a change adds, and a walkthrough on doppel |
 | `owl/testdata/` | corpus fixtures and their golden renderings |
 | `owl/walk.go` | entity traversal, `Signature`, `References` |
 

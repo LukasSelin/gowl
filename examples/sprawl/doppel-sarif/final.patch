@@ -1,0 +1,338 @@
+diff --git a/cmd/analyze.go b/cmd/analyze.go
+index 8aea19d..71335a3 100644
+--- a/cmd/analyze.go
++++ b/cmd/analyze.go
+@@ -44,8 +44,9 @@ var (
+ 
+ // Output formats for --format.
+ const (
+-	formatText = "text"
+-	formatJSON = "json"
++	formatText  = "text"
++	formatJSON  = "json"
++	formatSARIF = "sarif"
+ )
+ 
+ var analyzeCmd = &cobra.Command{
+@@ -69,9 +70,9 @@ var analyzeCmd = &cobra.Command{
+ 		// Validated after applyConfig so a bad value in .doppel.json is
+ 		// rejected exactly like a bad value on the command line.
+ 		switch outputFormat {
+-		case formatText, formatJSON:
++		case formatText, formatJSON, formatSARIF:
+ 		default:
+-			return fmt.Errorf("invalid --format %q: want %q or %q", outputFormat, formatText, formatJSON)
++			return fmt.Errorf("invalid --format %q: want %q, %q or %q", outputFormat, formatText, formatJSON, formatSARIF)
+ 		}
+ 		if _, err := reporter.ParseMapMetric(mapMetric); err != nil {
+ 			return err
+@@ -102,7 +103,7 @@ func init() {
+ 	analyzeCmd.Flags().StringVar(&testsMode, "tests", "exclude", "Test-function population: include, exclude, or only. Tests are conventionally similar, so the default models production code; cross test/prod pairs are never reported.")
+ 	analyzeCmd.Flags().StringVar(&genMode, "generated", "exclude", "Generated-file population: include, exclude, or only. Files carrying Go's \"Code generated ... DO NOT EDIT.\" marker are near-identical by construction and unactionable, so the default models hand-written code.")
+ 	analyzeCmd.Flags().Float64Var(&calibrateRate, "calibrate", defaultCalibrateRate, "Fraction of random unrelated pairs the thresholds may admit. Derives --threshold, --struct-min and --family-min from this corpus, so the operating point means the same thing at any size; 0 = use the fixed defaults")
+-	analyzeCmd.Flags().StringVar(&outputFormat, "format", formatText, "Stdout format: text or json")
++	analyzeCmd.Flags().StringVar(&outputFormat, "format", formatText, "Stdout format: text, json, or sarif (SARIF 2.1.0, for GitHub code scanning)")
+ 	analyzeCmd.Flags().IntVar(&familiesN, "families", 5, "Near-duplicate families to show in the report (0 = no families section)")
+ 	analyzeCmd.Flags().StringVar(&mapMetric, "map-metric", string(reporter.DefaultMapMetric), "What the markdown report's package duplication map weighs an edge by: merge-worthy (doppel's own merge verdict), pairs (every surviving candidate), or evidence (summed corroborated evidence). Presentation only — no score, filter or baseline reads it.")
+ 	analyzeCmd.Flags().StringVar(&decisionsFile, "decisions", "", "Write every retrieved pair's fate to this JSON file — reported, capped by --max-per-func, past --top, under --struct-min, or across build units — with each merge-verdict gate stated as passed or blocked, and both sides named as a labels file names them. For building golden labels; changes nothing measured.")
+@@ -142,7 +143,7 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
+ 		return err
+ 	}
+ 
+-	if len(res.Units) == 0 && outputFormat != formatJSON {
++	if len(res.Units) == 0 && outputFormat == formatText {
+ 		fmt.Fprintln(cmd.OutOrStdout(), "No functions found.")
+ 		return nil
+ 	}
+@@ -190,7 +191,11 @@ func runAnalyze(cmd *cobra.Command, args []string) error {
+ 		meta.Overview = buildOverview(res, suppressed, metric)
+ 	}
+ 
+-	if outputFormat == formatJSON {
++	if outputFormat == formatSARIF {
++		if err := reporter.PrintSARIF(cmd.OutOrStdout(), snapshotOf(res, pairs)); err != nil {
++			return err
++		}
++	} else if outputFormat == formatJSON {
+ 		// The snapshot describes what this run reports, so it carries the same
+ 		// ranked pair set the text report shows. A snapshot meant for diffing
+ 		// is taken by `doppel hook`, which deliberately runs uncapped.
+diff --git a/cmd/movestage.go b/cmd/movestage.go
+index 72b5a25..1b2ff88 100644
+--- a/cmd/movestage.go
++++ b/cmd/movestage.go
+@@ -46,7 +46,7 @@ func movesShouldRun(p Params, units []parser.CodeUnit, enabled bool, format, out
+ 	if !enabled || p.TestsMode == "only" {
+ 		return false
+ 	}
+-	if format == formatJSON && output == "" {
++	if format != formatText && output == "" {
+ 		return false
+ 	}
+ 	return slices.ContainsFunc(units, func(u parser.CodeUnit) bool { return u.Lang == "go" })
+diff --git a/internal/reporter/sarif.go b/internal/reporter/sarif.go
+new file mode 100644
+index 0000000..3689797
+--- /dev/null
++++ b/internal/reporter/sarif.go
+@@ -0,0 +1,163 @@
++package reporter
++
++import (
++	"fmt"
++	"io"
++	"strings"
++
++	"github.com/LukasSelin/doppel/internal/analyzer"
++	"github.com/LukasSelin/doppel/internal/snapshot"
++)
++
++// sarifSchema is the SARIF 2.1.0 JSON schema a log names.
++const sarifSchema = "https://json.schemastore.org/sarif-2.1.0.json"
++
++// sarifKinds is every rule a doppel SARIF log can cite: one per pair kind,
++// and "" for a pair no kind describes. The descriptions sit beside kindClause
++// in spirit: the kind names are analyzer's, the words about them are the
++// reporter's.
++var sarifKinds = []struct{ kind, text string }{
++	{"", "Two functions that share code shape and architectural context: a merge candidate."},
++	{analyzer.KindInterfaceImpl, "Methods with the same name and signature on different receivers: near-identical by construction."},
++	{analyzer.KindFork, "A copy that was forked and then diverged: the names agree once version markers are stripped."},
++	{analyzer.KindMirror, "One operation run in opposite directions, such as an encoder and its decoder."},
++	{analyzer.KindThinWrappers, "Small bodies delegating to the same helpers and naming different things."},
++	{analyzer.KindDifferentCalls, "Bodies that share a shape but few of their calls."},
++	{analyzer.KindSubsystemCopies, "Two copies of one function, each with callers of its own and no caller using both."},
++}
++
++// sarifRuleID is the rule a pair of this kind is reported under.
++func sarifRuleID(kind string) string {
++	if kind == "" {
++		return "doppel/near-duplicate"
++	}
++	return "doppel/" + strings.ReplaceAll(kind, " ", "-")
++}
++
++// PrintSARIF writes a snapshot's pairs as a SARIF 2.1.0 log, the format GitHub
++// code scanning reads: one result per pair, located at side A, with side B as
++// its related location. A merge-worthy pair is a warning; any other is a note.
++//
++// The wire types below are unexported on purpose. They are SARIF's shape, not
++// doppel's: a side is a snapshot.Unit and a kind is an analyzer kind name, and
++// nothing outside this file builds a SARIF value.
++func PrintSARIF(w io.Writer, s snapshot.Snapshot) error {
++	units := make(map[string]snapshot.Unit, len(s.Units))
++	for _, u := range s.Units {
++		units[u.Key] = u
++	}
++
++	rules := make([]sarifRule, len(sarifKinds))
++	for i, k := range sarifKinds {
++		short := k.kind
++		if short == "" {
++			short = "near-duplicate functions"
++		}
++		rules[i] = sarifRule{ID: sarifRuleID(k.kind), ShortDescription: sarifText{short}, FullDescription: sarifText{k.text}}
++	}
++
++	results := make([]sarifResult, 0, len(s.Pairs))
++	for _, p := range s.Pairs {
++		a, b := units[p.A], units[p.B]
++		level := "note"
++		if p.MergeWorthy {
++			level = "warning"
++		}
++		results = append(results, sarifResult{
++			RuleID: sarifRuleID(p.Kind),
++			Level:  level,
++			Message: sarifText{fmt.Sprintf("%s.%s is a near duplicate of %s.%s (code shape %.2f)",
++				a.Package, a.Name, b.Package, b.Name, p.Score)},
++			Locations:        []sarifLocation{sarifAt(a, 0, "")},
++			RelatedLocations: []sarifLocation{sarifAt(b, 1, "the other half: "+b.Package+"."+b.Name)},
++			// Unit keys are doppel's stable cross-run identity, so code
++			// scanning tracks one alert per pair across commits.
++			PartialFingerprints: map[string]string{"doppelPair/v1": p.A + "|" + p.B},
++		})
++	}
++
++	return encodeJSON(w, sarifLog{
++		Schema:  sarifSchema,
++		Version: "2.1.0",
++		Runs: []sarifRun{{
++			Tool: sarifTool{Driver: sarifDriver{
++				Name:           "doppel",
++				Version:        s.Doppel,
++				InformationURI: "https://github.com/LukasSelin/doppel",
++				Rules:          rules,
++			}},
++			Results: results,
++		}},
++	})
++}
++
++func sarifAt(u snapshot.Unit, id int, msg string) sarifLocation {
++	l := sarifLocation{ID: id, PhysicalLocation: sarifPhysical{
++		ArtifactLocation: sarifArtifact{URI: u.File},
++		Region:           sarifRegion{StartLine: u.Line},
++	}}
++	if msg != "" {
++		l.Message = &sarifText{msg}
++	}
++	return l
++}
++
++type sarifLog struct {
++	Schema  string     `json:"$schema"`
++	Version string     `json:"version"`
++	Runs    []sarifRun `json:"runs"`
++}
++
++type sarifRun struct {
++	Tool    sarifTool     `json:"tool"`
++	Results []sarifResult `json:"results"`
++}
++
++type sarifTool struct {
++	Driver sarifDriver `json:"driver"`
++}
++
++type sarifDriver struct {
++	Name           string      `json:"name"`
++	Version        string      `json:"version,omitempty"`
++	InformationURI string      `json:"informationUri"`
++	Rules          []sarifRule `json:"rules"`
++}
++
++type sarifRule struct {
++	ID               string    `json:"id"`
++	ShortDescription sarifText `json:"shortDescription"`
++	FullDescription  sarifText `json:"fullDescription"`
++}
++
++type sarifResult struct {
++	RuleID              string            `json:"ruleId"`
++	Level               string            `json:"level"`
++	Message             sarifText         `json:"message"`
++	Locations           []sarifLocation   `json:"locations"`
++	RelatedLocations    []sarifLocation   `json:"relatedLocations,omitempty"`
++	PartialFingerprints map[string]string `json:"partialFingerprints,omitempty"`
++}
++
++type sarifText struct {
++	Text string `json:"text"`
++}
++
++type sarifLocation struct {
++	ID               int           `json:"id,omitempty"`
++	PhysicalLocation sarifPhysical `json:"physicalLocation"`
++	Message          *sarifText    `json:"message,omitempty"`
++}
++
++type sarifPhysical struct {
++	ArtifactLocation sarifArtifact `json:"artifactLocation"`
++	Region           sarifRegion   `json:"region"`
++}
++
++type sarifArtifact struct {
++	URI string `json:"uri"`
++}
++
++type sarifRegion struct {
++	StartLine int `json:"startLine"`
++}
+diff --git a/internal/reporter/sarif_test.go b/internal/reporter/sarif_test.go
+new file mode 100644
+index 0000000..b62c4ee
+--- /dev/null
++++ b/internal/reporter/sarif_test.go
+@@ -0,0 +1,91 @@
++package reporter
++
++import (
++	"bytes"
++	"encoding/json"
++	"testing"
++
++	"github.com/LukasSelin/doppel/internal/analyzer"
++	"github.com/LukasSelin/doppel/internal/snapshot"
++)
++
++func TestPrintSARIF(t *testing.T) {
++	s := snapshot.Snapshot{
++		Doppel: "v1.2.3",
++		Units: []snapshot.Unit{
++			{Key: "a", Package: "billing", Name: "notifyOpened", File: "billing/notify.go", Line: 12},
++			{Key: "b", Package: "billing", Name: "notifyClosed", File: "billing/notify.go", Line: 40},
++			{Key: "c", Package: "aws", Name: "Validate", File: "aws/validate.go", Line: 7},
++		},
++		Pairs: []snapshot.Pair{
++			{A: "a", B: "b", Score: 0.97, MergeWorthy: true},
++			{A: "b", B: "c", Score: 0.71, Kind: analyzer.KindInterfaceImpl},
++		},
++	}
++	var buf bytes.Buffer
++	if err := PrintSARIF(&buf, s); err != nil {
++		t.Fatal(err)
++	}
++
++	var log struct {
++		Version string
++		Runs    []struct {
++			Tool struct {
++				Driver struct {
++					Version string
++					Rules   []struct{ ID string }
++				}
++			}
++			Results []struct {
++				RuleID    string
++				Level     string
++				Locations []struct {
++					PhysicalLocation struct {
++						ArtifactLocation struct{ URI string }
++						Region           struct{ StartLine int }
++					}
++				}
++				RelatedLocations    []struct{ ID int }
++				PartialFingerprints map[string]string
++			}
++		}
++	}
++	if err := json.Unmarshal(buf.Bytes(), &log); err != nil {
++		t.Fatalf("not JSON: %v\n%s", err, buf.String())
++	}
++	if log.Version != "2.1.0" || len(log.Runs) != 1 {
++		t.Fatalf("version %q with %d runs, want 2.1.0 with 1", log.Version, len(log.Runs))
++	}
++	run := log.Runs[0]
++	if run.Tool.Driver.Version != "v1.2.3" {
++		t.Errorf("driver version = %q, want the snapshot's", run.Tool.Driver.Version)
++	}
++	rules := map[string]bool{}
++	for _, r := range run.Tool.Driver.Rules {
++		rules[r.ID] = true
++	}
++	if len(run.Results) != 2 {
++		t.Fatalf("%d results, want 2", len(run.Results))
++	}
++	for _, r := range run.Results {
++		if !rules[r.RuleID] {
++			t.Errorf("result cites %q, which the driver does not declare", r.RuleID)
++		}
++		if len(r.RelatedLocations) != 1 || r.RelatedLocations[0].ID != 1 {
++			t.Errorf("%s: want side B as related location 1", r.RuleID)
++		}
++	}
++	first, second := run.Results[0], run.Results[1]
++	if first.RuleID != "doppel/near-duplicate" || first.Level != "warning" {
++		t.Errorf("first = %s/%s, want doppel/near-duplicate/warning", first.RuleID, first.Level)
++	}
++	if loc := first.Locations[0].PhysicalLocation; loc.ArtifactLocation.URI != "billing/notify.go" || loc.Region.StartLine != 12 {
++		t.Errorf("first located at %s:%d, want billing/notify.go:12", loc.ArtifactLocation.URI, loc.Region.StartLine)
++	}
++	if first.PartialFingerprints["doppelPair/v1"] != "a|b" {
++		t.Errorf("fingerprint = %q, want the unit keys", first.PartialFingerprints["doppelPair/v1"])
++	}
++	if second.RuleID != "doppel/interface-implementations" || second.Level != "note" {
++		t.Errorf("second = %s/%s, want doppel/interface-implementations/note", second.RuleID, second.Level)
++	}
++}

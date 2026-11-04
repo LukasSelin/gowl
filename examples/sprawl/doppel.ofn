@@ -1,0 +1,149 @@
+# doppel's architecture, written as OWL 2 EL for examples/sprawl.
+#
+# doppel declares no architecture of its own. Its README says so: it measures
+# code against the corpus's own practice, "so it cannot flag a layering
+# violation - that is a linter's job". This file is that declaration. It was
+# read off doppel's import graph and package docs at commit 9807c32, and the
+# tree at that commit satisfies it.
+#
+# A package is a class named by its import path. examples/sprawl writes
+# SubClassOf(P ObjectSomeValuesFrom(:imports Q)) for each import and makes
+# :imports a subproperty of the transitive :dependsOn. This file does three
+# things:
+#
+#   - places every package in exactly one layer;
+#   - defines a Reaches* class for each thing a rule forbids depending on;
+#   - states each rule as DisjointClasses, with an rdfs:comment that the
+#     report prints.
+#
+# A new package needs a SubClassOf line here before the gate passes. That line
+# is a decision about where the code belongs, and it shows up in review.
+
+Prefix(:=<https://github.com/LukasSelin/gowl/examples/sprawl#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(doppel:=<https://github.com/LukasSelin/doppel/>)
+Prefix(internal:=<https://github.com/LukasSelin/doppel/internal/>)
+
+Ontology(<https://github.com/LukasSelin/gowl/examples/sprawl/doppel>
+
+    # --- Layers ---------------------------------------------------------------
+
+    Declaration(Class(:Entrypoint))
+    AnnotationAssertion(rdfs:label :Entrypoint "entrypoint")
+    AnnotationAssertion(rdfs:comment :Entrypoint "The binary and its cobra commands: flags, config, and wiring the pipeline to a renderer.")
+    SubClassOf(:Entrypoint :Layer)
+    SubClassOf(:Entrypoint :Shipped)
+
+    Declaration(Class(:Presentation))
+    AnnotationAssertion(rdfs:label :Presentation "presentation")
+    AnnotationAssertion(rdfs:comment :Presentation "Everything that turns a finished analysis into text, JSON, markdown or a page.")
+    SubClassOf(:Presentation :Layer)
+    SubClassOf(:Presentation :Library)
+    SubClassOf(:Presentation :Shipped)
+
+    Declaration(Class(:Engine))
+    AnnotationAssertion(rdfs:label :Engine "engine")
+    AnnotationAssertion(rdfs:comment :Engine "What doppel measures, and how. It does not know how the result is shown.")
+    SubClassOf(:Engine :Layer)
+    SubClassOf(:Engine :Library)
+    SubClassOf(:Engine :Shipped)
+
+    Declaration(Class(:Pipeline))
+    AnnotationAssertion(rdfs:label :Pipeline "pipeline")
+    AnnotationAssertion(rdfs:comment :Pipeline "The analysis stages: parsing, fingerprints, concepts, retrieval, comparison, ranking, and what is built from their output.")
+    SubClassOf(:Pipeline :Engine)
+
+    Declaration(Class(:Frontend))
+    AnnotationAssertion(rdfs:label :Frontend "frontend")
+    AnnotationAssertion(rdfs:comment :Frontend "A language frontend: reads source into the language-neutral IR.")
+    SubClassOf(:Frontend :Engine)
+
+    Declaration(Class(:Foundation))
+    AnnotationAssertion(rdfs:label :Foundation "foundation")
+    AnnotationAssertion(rdfs:comment :Foundation "The IR and the primitives every stage shares. Depends on nothing in the module.")
+    SubClassOf(:Foundation :Engine)
+
+    Declaration(Class(:Harness))
+    AnnotationAssertion(rdfs:label :Harness "harness")
+    AnnotationAssertion(rdfs:comment :Harness "The golden benchmark: measures the pipeline and is never shipped.")
+    SubClassOf(:Harness :Layer)
+    SubClassOf(:Harness :Library)
+
+    Declaration(Class(:Library))
+    AnnotationAssertion(rdfs:label :Library "library")
+    AnnotationAssertion(rdfs:comment :Library "Every layer below the entrypoint.")
+
+    Declaration(Class(:Shipped))
+    AnnotationAssertion(rdfs:label :Shipped "shipped")
+    AnnotationAssertion(rdfs:comment :Shipped "Every layer that ends up in the doppel binary.")
+
+    DisjointClasses(Annotation(rdfs:comment "A package sits in one layer.") :Entrypoint :Presentation :Engine :Harness)
+    DisjointClasses(Annotation(rdfs:comment "An engine package sits in one part of the engine.") :Pipeline :Frontend :Foundation)
+
+    # --- Where each package sits ------------------------------------------------
+
+    SubClassOf(<https://github.com/LukasSelin/doppel> :Entrypoint)
+    SubClassOf(doppel:cmd :Entrypoint)
+
+    SubClassOf(internal:reporter :Presentation)
+    SubClassOf(internal:dashboard :Presentation)
+
+    SubClassOf(internal:analyzer :Pipeline)
+    SubClassOf(internal:calibrate :Pipeline)
+    SubClassOf(internal:comparator :Pipeline)
+    SubClassOf(internal:concepter :Pipeline)
+    SubClassOf(internal:culture :Pipeline)
+    SubClassOf(internal:family :Pipeline)
+    SubClassOf(internal:fingerprint :Pipeline)
+    SubClassOf(internal:identity :Pipeline)
+    SubClassOf(internal:lexbridge :Pipeline)
+    SubClassOf(internal:lexicon :Pipeline)
+    SubClassOf(internal:mapper :Pipeline)
+    SubClassOf(internal:moves :Pipeline)
+    SubClassOf(internal:ontology :Pipeline)
+    SubClassOf(internal:parser :Pipeline)
+    SubClassOf(internal:retriever :Pipeline)
+    SubClassOf(internal:snapshot :Pipeline)
+    SubClassOf(internal:tagger :Pipeline)
+
+    SubClassOf(internal:gofront :Frontend)
+    SubClassOf(internal:lexfront :Frontend)
+
+    SubClassOf(internal:canon :Foundation)
+    SubClassOf(internal:clique :Foundation)
+    SubClassOf(internal:detmath :Foundation)
+    SubClassOf(internal:parallel :Foundation)
+    SubClassOf(internal:syntax :Foundation)
+
+    SubClassOf(internal:bench :Harness)
+
+    # --- What the rules talk about --------------------------------------------
+
+    Declaration(Class(:ReachesEntrypoint))
+    AnnotationAssertion(rdfs:label :ReachesEntrypoint "depends on the entrypoint")
+    EquivalentClasses(:ReachesEntrypoint ObjectSomeValuesFrom(:dependsOn :Entrypoint))
+
+    Declaration(Class(:ReachesPresentation))
+    AnnotationAssertion(rdfs:label :ReachesPresentation "depends on presentation")
+    EquivalentClasses(:ReachesPresentation ObjectSomeValuesFrom(:dependsOn :Presentation))
+
+    Declaration(Class(:ReachesPipeline))
+    AnnotationAssertion(rdfs:label :ReachesPipeline "depends on the pipeline")
+    EquivalentClasses(:ReachesPipeline ObjectSomeValuesFrom(:dependsOn :Pipeline))
+
+    Declaration(Class(:ReachesModule))
+    AnnotationAssertion(rdfs:label :ReachesModule "depends on the module")
+    EquivalentClasses(:ReachesModule ObjectSomeValuesFrom(:dependsOn :Package))
+
+    Declaration(Class(:ReachesHarness))
+    AnnotationAssertion(rdfs:label :ReachesHarness "depends on the harness")
+    EquivalentClasses(:ReachesHarness ObjectSomeValuesFrom(:dependsOn :Harness))
+
+    # --- Rules ----------------------------------------------------------------
+
+    DisjointClasses(Annotation(rdfs:comment "Only the entrypoint imports the entrypoint.") :Library :ReachesEntrypoint)
+    DisjointClasses(Annotation(rdfs:comment "The engine never depends on presentation.") :Engine :ReachesPresentation)
+    DisjointClasses(Annotation(rdfs:comment "A frontend knows the IR, not the pipeline that reads it.") :Frontend :ReachesPipeline)
+    DisjointClasses(Annotation(rdfs:comment "Foundation packages import nothing from the module.") :Foundation :ReachesModule)
+    DisjointClasses(Annotation(rdfs:comment "Nothing shipped depends on the benchmark harness.") :Shipped :ReachesHarness)
+)
