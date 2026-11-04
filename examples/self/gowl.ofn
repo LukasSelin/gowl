@@ -72,7 +72,7 @@ Ontology(<https://github.com/LukasSelin/gowl/self>
     AnnotationAssertion(rdfs:comment :package.gowl.cmd.gowl "Command gowl inspects OWL 2 ontologies written in functional syntax."^^xsd:string)
     AnnotationAssertion(rdfs:comment :package.gowl.cmd.vocabgen "Command vocabgen generates the packages under vocab/ from the published vocabulary documents listed in sources.go."^^xsd:string)
     AnnotationAssertion(rdfs:comment :package.gowl.el "Package el classifies OWL 2 EL ontologies."^^xsd:string)
-    AnnotationAssertion(rdfs:comment :package.gowl.examples.self "Command self describes gowl's own Go code as an OWL 2 ontology, so that the repository's linter has a real, non-toy ontology of this repository to run on."^^xsd:string)
+    AnnotationAssertion(rdfs:comment :package.gowl.examples.self "Command self describes a Go module's code as an OWL 2 ontology."^^xsd:string)
     AnnotationAssertion(rdfs:comment :package.gowl.internal.rdf "Package rdf reads RDF graphs from Turtle and RDF/XML."^^xsd:string)
     AnnotationAssertion(rdfs:comment :package.gowl.internal.rdfowl "Package rdfowl maps an RDF graph onto gowl's structural OWL model."^^xsd:string)
     AnnotationAssertion(rdfs:comment :package.gowl.internal.vocabgen "Package vocabgen writes a Go package for one published vocabulary."^^xsd:string)

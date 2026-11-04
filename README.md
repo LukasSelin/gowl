@@ -631,6 +631,30 @@ $ gowl classify -explain ":owl.SubClassOf :owl.Node" examples/self/gowl.ofn
   SubClassOf(:owl.SubClassOf :owl.Axiom)
 ```
 
+### Describing another module
+
+Give `examples/self` the root of any other Go module, meaning the directory that
+holds its `go.mod`, and it describes that module instead:
+
+```bash
+go run ./examples/self ../doppel > doppel.ofn
+gowl lint doppel.ofn
+```
+
+The ontology is named by the module path, here `<https://github.com/LukasSelin/doppel>`.
+The mapping is the same as for gowl. The module has to build. Its own packages
+are read from source. Everything they import is read from the export data that
+`go list -export` produces inside that module, standard library and
+third-party modules alike, so its dependencies must already be in the module
+cache. Directories that hold their own `go.mod` are other modules and are
+skipped, as the go tool skips them.
+
+One importer serves the standard library and the dependencies, so each package
+is loaded once. A cobra command's `context.Context` is therefore the same type
+as the module's own. Loading the standard library and third-party code through
+two importers would produce two different `context` packages, and the module
+would fail to type-check.
+
 ## Profiles
 
 `owl.CheckProfile(o, owl.ProfileEL)` returns every reason an ontology falls
@@ -734,7 +758,7 @@ Not yet:
 | `lint/` | the lint rule engine and built-in rules |
 | `cmd/gowl/` | the command-line tool |
 | `cmd/gowl/json.go` | the `-json` document shapes |
-| `examples/self/` | this repository described as an ontology, linted by its own linter |
+| `examples/self/` | this repository, or any Go module, described as an ontology, linted by its own linter |
 | `owl/testdata/` | corpus fixtures and their golden renderings |
 | `owl/walk.go` | entity traversal, `Signature`, `References` |
 

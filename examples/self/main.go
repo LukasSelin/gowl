@@ -1,10 +1,19 @@
-// Command self describes gowl's own Go code as an OWL 2 ontology, so that the
-// repository's linter has a real, non-toy ontology of this repository to run on.
-//
-// Run it from the repository root:
+// Command self describes a Go module's code as an OWL 2 ontology. Its first
+// subject is gowl itself, so that the repository's linter has a real, non-toy
+// ontology of this repository to run on. Run it from the repository root:
 //
 //	go run ./examples/self > examples/self/gowl.ofn
 //	go run ./cmd/gowl lint examples/self/gowl.ofn
+//
+// Given the root of another module — the directory holding its go.mod — it
+// describes that one instead:
+//
+//	go run ./examples/self ../doppel > doppel.ofn
+//
+// The module has to build. Its own packages are read from source; everything
+// they import, standard library and third-party modules alike, is read from
+// the export data "go list -export" produces inside that module, so its
+// dependencies must be in the module cache.
 //
 // The mapping is deliberately small:
 //
@@ -26,6 +35,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"go/ast"
 	"go/build"
@@ -34,8 +44,10 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"io"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -43,11 +55,10 @@ import (
 	"gowl/owl"
 )
 
-const (
-	module    = "gowl"
-	ontology  = "https://github.com/LukasSelin/gowl/self"
-	namespace = ontology + "#"
-)
+// selfIRI names gowl's own description. gowl's module path is not a URL the way
+// a published module's is, so it keeps the IRI it was first written with; any
+// other module is named by its module path under https://.
+const selfIRI = "https://github.com/LukasSelin/gowl/self"
 
 func main() {
 	root := "."
@@ -78,17 +89,23 @@ type pkg struct {
 }
 
 // loader type-checks the module's packages, resolving imports of the module
-// from source and everything else from the standard library's export data.
+// from source and everything else from compiled export data.
 type loader struct {
 	root   string
+	module string // the module path declared in root/go.mod
 	fset   *token.FileSet
-	std    types.Importer
+	deps   types.Importer
 	loaded map[string]*pkg
 }
 
+// inModule reports whether path names a package of the module being described.
+func (l *loader) inModule(path string) bool {
+	return path == l.module || strings.HasPrefix(path, l.module+"/")
+}
+
 func (l *loader) Import(path string) (*types.Package, error) {
-	if path != module && !strings.HasPrefix(path, module+"/") {
-		return l.std.Import(path)
+	if !l.inModule(path) {
+		return l.deps.Import(path)
 	}
 	p, err := l.load(path)
 	if err != nil {
@@ -106,7 +123,7 @@ func (l *loader) load(path string) (*pkg, error) {
 	}
 	l.loaded[path] = nil
 
-	dir := filepath.Join(l.root, filepath.FromSlash(strings.TrimPrefix(strings.TrimPrefix(path, module), "/")))
+	dir := filepath.Join(l.root, filepath.FromSlash(strings.TrimPrefix(strings.TrimPrefix(path, l.module), "/")))
 	bp, err := build.ImportDir(dir, 0)
 	if err != nil {
 		return nil, err
@@ -128,9 +145,10 @@ func (l *loader) load(path string) (*pkg, error) {
 	return p, nil
 }
 
-// packages lists the import paths of every package under root, skipping
-// testdata and dot- or underscore-prefixed directories as the go tool does.
-func packages(root string) ([]string, error) {
+// packages lists the import paths of every package of module under root,
+// skipping testdata, dot- or underscore-prefixed directories and nested modules
+// as the go tool does.
+func packages(root, module string) ([]string, error) {
 	var out []string
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -142,6 +160,11 @@ func packages(root string) ([]string, error) {
 		name := d.Name()
 		if path != root && (name == "testdata" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")) {
 			return filepath.SkipDir
+		}
+		if path != root {
+			if _, err := os.Stat(filepath.Join(path, "go.mod")); err == nil {
+				return filepath.SkipDir // another module
+			}
 		}
 		if _, err := build.ImportDir(path, 0); err != nil {
 			return nil // no buildable Go files here
@@ -169,13 +192,67 @@ type typeInfo struct {
 	doc   string
 }
 
-// Build type-checks the module rooted at root and returns the ontology that
-// describes it.
-func Build(root string) (*owl.Ontology, error) {
-	fset := token.NewFileSet()
-	l := &loader{root: root, fset: fset, std: importer.Default(), loaded: map[string]*pkg{}}
+// modulePath returns the module path declared in root/go.mod.
+func modulePath(root string) (string, error) {
+	name := filepath.Join(root, "go.mod")
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return "", err
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		if f := strings.Fields(line); len(f) >= 2 && f[0] == "module" {
+			return strings.Trim(f[1], "\"`"), nil
+		}
+	}
+	return "", fmt.Errorf("%s: no module directive", name)
+}
 
-	paths, err := packages(root)
+// exportData asks the go command, run in root, where the compiled export data
+// of every package the module depends on lives, standard library included.
+// Reading them all through one importer keeps one copy of each package, so the
+// context.Context a dependency was compiled against is the one the module sees.
+func exportData(root string) (map[string]string, error) {
+	cmd := exec.Command("go", "list", "-deps", "-export",
+		"-f", "{{if .Export}}{{.ImportPath}}\t{{.Export}}{{end}}", "./...")
+	cmd.Dir = root
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("go list -export in %s: %v\n%s", root, err, bytes.TrimSpace(stderr.Bytes()))
+	}
+	files := map[string]string{}
+	for _, line := range strings.Split(string(out), "\n") {
+		if path, file, ok := strings.Cut(strings.TrimSpace(line), "\t"); ok {
+			files[path] = file
+		}
+	}
+	return files, nil
+}
+
+// Build type-checks the module rooted at root — the directory holding its
+// go.mod — and returns the ontology that describes it.
+func Build(root string) (*owl.Ontology, error) {
+	module, err := modulePath(root)
+	if err != nil {
+		return nil, err
+	}
+	files, err := exportData(root)
+	if err != nil {
+		return nil, err
+	}
+	lookup := func(path string) (io.ReadCloser, error) {
+		file, ok := files[path]
+		if !ok {
+			return nil, fmt.Errorf("no export data for %s", path)
+		}
+		return os.Open(file)
+	}
+	fset := token.NewFileSet()
+	l := &loader{root: root, module: module, fset: fset,
+		deps: importer.ForCompiler(fset, "gc", lookup), loaded: map[string]*pkg{}}
+
+	paths, err := packages(root, module)
 	if err != nil {
 		return nil, err
 	}
@@ -188,13 +265,19 @@ func Build(root string) (*owl.Ontology, error) {
 		pkgs = append(pkgs, p)
 	}
 
-	o := owl.New(ontology)
-	o.Prefix("", namespace)
-	o.Annotate(owl.RDFSComment, owl.Str("gowl's own Go code, described as an OWL 2 ontology by examples/self."))
+	iri := owl.IRI(selfIRI)
+	about := "gowl's own Go code, described as an OWL 2 ontology by examples/self."
+	if module != "gowl" {
+		iri = owl.IRI("https://" + module)
+		about = module + "'s Go code, described as an OWL 2 ontology by gowl's examples/self."
+	}
+	o := owl.New(iri)
+	o.Prefix("", iri+"#")
+	o.Annotate(owl.RDFSComment, owl.Str(about))
 
 	// The vocabulary for talking about Go code.
 	pkgClass := o.Class(":Package")
-	o.Define(pkgClass).Label("Go package").Comment("A Go package of the gowl module.")
+	o.Define(pkgClass).Label("Go package").Comment("A Go package of the " + module + " module.")
 	imports := o.ObjectProperty(":imports")
 	o.DefineObjectProperty(imports).Domain(pkgClass).Range(pkgClass).Irreflexive().
 		Label("imports").Comment("The subject package imports the object package directly.")
@@ -216,7 +299,7 @@ func Build(root string) (*owl.Ontology, error) {
 		}
 		var deps []string
 		for _, imp := range p.types.Imports() {
-			if imp.Path() == module || strings.HasPrefix(imp.Path(), module+"/") {
+			if l.inModule(imp.Path()) {
 				deps = append(deps, imp.Path())
 			}
 		}
