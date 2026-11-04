@@ -667,6 +667,95 @@ as the module's own. Loading the standard library and third-party code through
 two importers would produce two different `context` packages, and the module
 would fail to type-check.
 
+### Asking questions of Kubernetes' API types
+
+`gowl gocode` copies code into OWL, and a reasoner can do little with the
+result. Go has no inheritance, so the classes have no hierarchy. Field domains
+and ranges, package individuals and their imports are all outside OWL 2 EL, so
+`gowl classify` ignores them.
+
+[`examples/k8s`](examples/k8s/main.go) writes only structure a reasoner can
+use, and reads the questions from a hand-written file:
+
+- A field becomes an existential restriction over a shared property. Value
+  fields use `embeds` or `hasField`, under a transitive `contains`. Pointers,
+  slices and maps use `mayHave`, under a transitive `mayContain`. Fields of
+  basic types are left out.
+- A type's IRI is its pkg.go.dev URL, so `core/v1.Event` and `events/v1.Event`
+  stay two classes. Each package gets a prefix such as `appsv1:`.
+- Source is read syntactically, so nothing has to be type-checked or loaded.
+  Generated files are skipped.
+
+[`questions.ofn`](examples/k8s/questions.ofn) asks seven questions as defined
+classes, and states one rule:
+
+```
+EquivalentClasses(:RunsPods ObjectIntersectionOf(:ObjectKind
+    ObjectSomeValuesFrom(:contains corev1:PodSpec)))
+DisjointClasses(:ObjectKind :ListKind)
+```
+
+On k8s.io/api v0.37.2 it reads 65 packages and 1,523 types, and skips 244
+generated files. It takes about two seconds, and every axiom it writes is in
+OWL 2 EL:
+
+```bash
+go mod download k8s.io/api@v0.37.2 k8s.io/apimachinery@v0.37.2
+M=$(go env GOMODCACHE)
+go run ./examples/k8s -questions examples/k8s/questions.ofn -answers -o k8s.ofn \
+    $M/k8s.io/api@v0.37.2 $M/k8s.io/apimachinery@v0.37.2/pkg/apis/meta/v1
+```
+
+```
+:ObjectKind (173)  includes :MayRunPods, :MountsSecrets, :RunsPods, :SelectsByLabel, :UsesStandardConditions
+:ListKind (154)
+:RunsPods (18)
+:MayRunPods (19)  includes :RunsPods
+:MountsSecrets (19)  includes :MayRunPods, :RunsPods
+:SelectsByLabel (47)  includes :MayRunPods, :RunsPods
+:UsesStandardConditions (24)
+```
+
+_(Member lists omitted.)_
+
+- **Runs pods:** Deployment, StatefulSet, DaemonSet and ReplicaSet in every API
+  version that has them, plus Job, CronJob, Pod and PodTemplate.
+- **May run pods:** ReplicationController as well, because its `Template` is a
+  `*PodTemplateSpec`.
+- **Rule:** no type breaks it.
+
+Some answers are inferences the reasoner made between the questions
+themselves:
+
+- **`:MayRunPods ⊑ :MountsSecrets`.** A pod spec reaches a Secret volume source
+  through its volumes, so every kind that may run pods can mount a Secret.
+- **`:MayRunPods ⊑ :SelectsByLabel`.** A pod spec also reaches a label selector
+  through its affinity and topology-spread terms, so 19 of the 47 kinds in
+  `:SelectsByLabel` are pod runners. The other 28 select objects themselves:
+  admission policies, NetworkPolicy, PodDisruptionBudget,
+  HorizontalPodAutoscaler and others. The question was written too broadly, and
+  the answer shows it.
+
+`gowl classify -explain` shows the field path behind any answer:
+
+```
+$ gowl classify -explain "batchv1:CronJob :RunsPods" k8s.ofn
+batchv1:CronJob ⊑ :RunsPods follows from:
+  ...
+  SubClassOf(batchv1:CronJob ObjectSomeValuesFrom(:hasField batchv1:CronJobSpec))
+  SubClassOf(batchv1:CronJobSpec ObjectSomeValuesFrom(:hasField batchv1:JobTemplateSpec))
+  SubClassOf(batchv1:JobSpec ObjectSomeValuesFrom(:hasField corev1:PodTemplateSpec))
+  SubClassOf(batchv1:JobTemplateSpec ObjectSomeValuesFrom(:hasField batchv1:JobSpec))
+  SubClassOf(corev1:PodTemplateSpec ObjectSomeValuesFrom(:hasField corev1:PodSpec))
+  SubObjectPropertyOf(:hasField :contains)
+  TransitiveObjectProperty(:contains)
+```
+
+OWL's open world limits what can be asked. A question cannot be about something
+being absent, such as "which kinds have no selector". It also cannot count
+anything, or find cycles. [`main_test.go`](examples/k8s/main_test.go) runs the
+real questions against a miniature of the API types under `testdata`.
+
 ## Profiles
 
 `owl.CheckProfile(o, owl.ProfileEL)` returns every reason an ontology falls
@@ -772,6 +861,7 @@ Not yet:
 | `cmd/gowl/` | the command-line tool |
 | `cmd/gowl/json.go` | the `-json` document shapes |
 | `examples/self/` | this repository described as an ontology, linted by its own linter |
+| `examples/k8s/` | Go type structure for an EL reasoner, with questions about Kubernetes' API types |
 | `owl/testdata/` | corpus fixtures and their golden renderings |
 | `owl/walk.go` | entity traversal, `Signature`, `References` |
 
