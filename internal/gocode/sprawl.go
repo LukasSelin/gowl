@@ -70,18 +70,27 @@ func Compare(before, after *owl.Ontology) Delta {
 		}
 	}
 	d.Findings = append(d.Findings, newOrphans(after, d.Added, now, existed)...)
+	sortFindings(d.Findings)
+	return d
+}
 
-	sort.SliceStable(d.Findings, func(i, j int) bool {
-		a, b := d.Findings[i], d.Findings[j]
+// sortFindings orders findings as [lint.Run] does: most severe first, then by
+// rule, then by subject. The message settles the rest, because some checks walk
+// maps and two findings can share a rule and a subject.
+func sortFindings(fs []lint.Finding) {
+	sort.SliceStable(fs, func(i, j int) bool {
+		a, b := fs[i], fs[j]
 		if a.Severity != b.Severity {
 			return a.Severity > b.Severity
 		}
 		if a.Rule != b.Rule {
 			return a.Rule < b.Rule
 		}
-		return a.Subject < b.Subject
+		if a.Subject != b.Subject {
+			return a.Subject < b.Subject
+		}
+		return a.Message < b.Message
 	})
-	return d
 }
 
 // slot is one field as Build records it: the class or datatype it holds.
@@ -95,51 +104,61 @@ type slot struct {
 // shape is a type's fields, sorted so that equal shapes compare equal.
 type shape []slot
 
-// shapes reads every type's fields back out of the property domains and
-// ranges Build writes, one property per exported field.
-func shapes(o *owl.Ontology) map[owl.Class]shape {
-	objDomain := map[owl.ObjectProperty]owl.Class{}
-	objRange := map[owl.ObjectProperty]owl.Class{}
-	dataDomain := map[owl.DataProperty]owl.Class{}
-	dataRange := map[owl.DataProperty]owl.Datatype{}
+// fieldInfo is what an ontology says about the property standing for one struct
+// field: the struct it is on and what it holds. Build always writes both; a plan
+// may leave either out, which leaves that part empty.
+type fieldInfo struct {
+	domain owl.Class
+	held   slot
+}
+
+// fieldsOf reads every field back out of the property domains and ranges,
+// keyed by the property's IRI.
+func fieldsOf(o *owl.Ontology) map[owl.IRI]fieldInfo {
+	out := map[owl.IRI]fieldInfo{}
+	set := func(iri owl.IRI, change func(*fieldInfo)) {
+		f := out[iri]
+		change(&f)
+		out[iri] = f
+	}
 	for ax := range o.All() {
 		switch x := owl.Unwrap(ax).(type) {
 		case owl.ObjectPropertyDomain:
 			p, ok1 := x.Property.(owl.ObjectProperty)
 			c, ok2 := x.Domain.(owl.Class)
 			if ok1 && ok2 {
-				objDomain[p] = c
+				set(p.IRI(), func(f *fieldInfo) { f.domain = c })
 			}
 		case owl.ObjectPropertyRange:
 			p, ok1 := x.Property.(owl.ObjectProperty)
 			c, ok2 := x.Range.(owl.Class)
 			if ok1 && ok2 {
-				objRange[p] = c
+				set(p.IRI(), func(f *fieldInfo) { f.held = slot{iri: c.IRI(), object: true} })
 			}
 		case owl.DataPropertyDomain:
 			p, ok1 := x.Property.(owl.DataProperty)
 			c, ok2 := x.Domain.(owl.Class)
 			if ok1 && ok2 {
-				dataDomain[p] = c
+				set(p.IRI(), func(f *fieldInfo) { f.domain = c })
 			}
 		case owl.DataPropertyRange:
 			p, ok1 := x.Property.(owl.DataProperty)
 			dt, ok2 := x.Range.(owl.Datatype)
 			if ok1 && ok2 {
-				dataRange[p] = dt
+				set(p.IRI(), func(f *fieldInfo) { f.held = slot{iri: dt.IRI()} })
 			}
 		}
 	}
+	return out
+}
 
+// shapes groups the fields Build writes by the type they are on, one property
+// per exported field.
+func shapes(o *owl.Ontology) map[owl.Class]shape {
 	out := map[owl.Class]shape{}
-	for p, c := range objDomain {
-		if r, ok := objRange[p]; ok {
-			out[c] = append(out[c], slot{iri: r.IRI(), object: true})
-		}
-	}
-	for p, c := range dataDomain {
-		if r, ok := dataRange[p]; ok {
-			out[c] = append(out[c], slot{iri: r.IRI()})
+	for _, f := range fieldsOf(o) {
+		if f.domain != "" && f.held.iri != "" {
+			out[f.domain] = append(out[f.domain], f.held)
 		}
 	}
 	for c, s := range out {
@@ -369,6 +388,14 @@ func renderList(o *owl.Ontology, cs []owl.Class) string {
 	}
 }
 
+// renderSlot names what a field holds: a class or a datatype.
+func renderSlot(o *owl.Ontology, s slot) string {
+	if s.object {
+		return o.Render(owl.Class(s.iri))
+	}
+	return o.Render(owl.Datatype(s.iri))
+}
+
 // renderShape lists fields by type, folding repeats: ":owl.Ontology,
 // xsd:integer ×2".
 func renderShape(o *owl.Ontology, s shape) string {
@@ -378,12 +405,7 @@ func renderShape(o *owl.Ontology, s shape) string {
 		for j < len(s) && s[j] == s[i] {
 			j++
 		}
-		var name string
-		if s[i].object {
-			name = o.Render(owl.Class(s[i].iri))
-		} else {
-			name = o.Render(owl.Datatype(s[i].iri))
-		}
+		name := renderSlot(o, s[i])
 		if n := j - i; n > 1 {
 			name += fmt.Sprintf(" ×%d", n)
 		}

@@ -4,7 +4,8 @@
       {
         "matcher": "Edit|Write",
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ontology-check.sh\" pre", "timeout": 120 }
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/ontology-check.sh\" pre", "timeout": 120 },
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/design-gate.sh\"", "timeout": 60 }
         ]
       }
     ],
@@ -19,7 +20,8 @@
     "Stop": [
       {
         "hooks": [
-          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/sprawl-check.sh\"", "timeout": 180, "statusMessage": "Comparing the module's types with the base commit" }
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/sprawl-check.sh\"", "timeout": 180, "statusMessage": "Comparing the module's types with the base commit" },
+          { "type": "command", "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/conform-check.sh\"", "timeout": 180, "statusMessage": "Comparing the code with its plan" }
         ]
       }
     ]

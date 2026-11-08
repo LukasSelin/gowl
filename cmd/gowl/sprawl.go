@@ -79,15 +79,24 @@ func cmdSprawl(args []string) int {
 }
 
 func printSprawl(base, commit string, o *owl.Ontology, d gocode.Delta, findings []lint.Finding, already int) {
-	short := commit
-	if len(short) > 12 {
-		short = short[:12]
-	}
-	fmt.Printf("compared with %s (%s): %d new type(s), %d changed\n", base, short, len(d.Added), len(d.Changed))
+	fmt.Printf("compared with %s (%s): %d new type(s), %d changed\n", base, shortCommit(commit), len(d.Added), len(d.Changed))
 	listClasses("new", o, d.Added)
 	listClasses("changed", o, d.Changed)
 	fmt.Println()
+	printFindings(findings, already)
+}
 
+// shortCommit abbreviates a commit id for a heading.
+func shortCommit(commit string) string {
+	if len(commit) > 12 {
+		return commit[:12]
+	}
+	return commit
+}
+
+// printFindings lists findings and how many there were, counting the ones -seen
+// left out.
+func printFindings(findings []lint.Finding, already int) {
 	for _, f := range findings {
 		fmt.Printf("%s: %s: %s\n", f.Severity, f.Rule, f.Message)
 	}

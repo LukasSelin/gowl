@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"gowl/el"
 	"gowl/internal/gocode"
@@ -415,6 +416,55 @@ type sprawlDoc struct {
 	// only the findings reported.
 	AlreadyReported int         `json:"already_reported"`
 	Summary         lintSummary `json:"summary"`
+}
+
+// planDoc is what gowl plan writes: what gowl sprawl would say about the plan
+// if it were already code, and which plan that was.
+type planDoc struct {
+	Design string `json:"design"`
+	sprawlDoc
+}
+
+// conformDoc is what gowl conform writes.
+type conformDoc struct {
+	Dir string `json:"dir"`
+	// Base is how the base was named; BaseCommit is what it resolved to.
+	Base       string `json:"base"`
+	BaseCommit string `json:"base_commit"`
+	// Designs are the plan files compared with the code.
+	Designs []string `json:"designs"`
+	// Checked counts the planned items compared with the code. Unchecked lists
+	// the terms the plans name outside the module.
+	Checked   int          `json:"checked"`
+	Unchecked []string     `json:"unchecked"`
+	Findings  []findingDoc `json:"findings"`
+	// AlreadyReported counts the findings -seen left out. The summary covers
+	// only the findings reported.
+	AlreadyReported int         `json:"already_reported"`
+	Summary         lintSummary `json:"summary"`
+}
+
+func conformJSON(dir, base, commit string, paths []string, o *owl.Ontology, c gocode.Conformance, findings []lint.Finding, already int, threshold lint.Severity) conformDoc {
+	l := lintJSON(dir, o, findings, threshold)
+	designs := make([]string, len(paths))
+	for i, p := range paths {
+		designs[i] = filepath.ToSlash(p)
+	}
+	unchecked := make([]string, len(c.Unchecked))
+	for i, iri := range c.Unchecked {
+		unchecked[i] = string(iri)
+	}
+	return conformDoc{
+		Dir:             dir,
+		Base:            base,
+		BaseCommit:      commit,
+		Designs:         designs,
+		Checked:         c.Checked,
+		Unchecked:       unchecked,
+		Findings:        l.Findings,
+		AlreadyReported: already,
+		Summary:         l.Summary,
+	}
 }
 
 func sprawlJSON(dir, base, commit string, o *owl.Ontology, d gocode.Delta, findings []lint.Finding, already int, threshold lint.Severity) sprawlDoc {
