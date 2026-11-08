@@ -487,6 +487,8 @@ gowl fmt     [-w] [-canonical] file.ofn
 gowl stats   [-json] file.ofn
 gowl gocode  [-o file.ofn] [module-dir]
 gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
+gowl plan    [-base ref] [-fail-on severity] [-json] plan.ofn [module-dir]
+gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
 ```
 
 `classify` runs the EL reasoner. `-axioms` writes the inferred taxonomy as an
@@ -498,11 +500,14 @@ form to put in CI.
 module's code, which the other commands can then read. See
 [Describing a Go module](#describing-a-go-module). `sprawl` runs it twice, on
 the working tree and on a base commit, to check what a change did to the
-module's types. See [Catching sprawl](#catching-sprawl).
+module's types. See [Catching sprawl](#catching-sprawl). `plan` and `conform`
+keep a change to a design written before it. See
+[Planning a change before writing it](#planning-a-change-before-writing-it).
 
-Exit status is 0 on success, 1 when a check fails (lint findings at or above
+Exit status is 0 on success, 1 when a check fails (findings at or above
 `-fail-on`, or a non-empty diff under `-exit-code`), and 2 on a usage or parse
-error — so `gowl lint` and `gowl diff -exit-code` drop straight into CI.
+error — so `gowl lint`, `gowl conform` and `gowl diff -exit-code` drop straight
+into CI.
 
 ### JSON output
 
@@ -517,6 +522,8 @@ gowl profile -json onto.ofn | jq -r '.in_profiles[]'
 gowl stats -json onto.ofn | jq '.counts.classes'
 gowl lint -list -json | jq -r '.rules[].name'
 gowl sprawl -json | jq -r '.added[]'
+gowl plan -json design/change.ofn | jq -r '.findings[].message'
+gowl conform -json | jq -r '.designs[], .summary.failed'
 ```
 
 Three properties make this safe to script against:
@@ -749,6 +756,119 @@ reported only once. That also means the hook cannot keep the agent looping. A
 turn whose Go changes were already checked costs about half a second. If the
 tree does not build, the hook skips the check.
 
+### Planning a change before writing it
+
+`gowl sprawl` looks at a change after it is written. `gowl plan` and
+`gowl conform` start earlier. The plan for a change is written first, as an
+ontology in `design/<change>.ofn` next to the module's `go.mod`, and the code is
+then held to it.
+
+A plan uses the names `gocode` writes, so it can be compared with the code. It
+names only what the change adds or alters, plus the existing types those
+additions point at:
+
+```
+Prefix(:=<https://example.com/store#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+
+Ontology(<https://example.com/store/design/holdings>
+    Declaration(Class(:store.Item))
+
+    Declaration(Class(:store.Holding))
+    Declaration(ObjectProperty(:store.Holding.What))
+    ObjectPropertyDomain(:store.Holding.What :store.Holding)
+    ObjectPropertyRange(:store.Holding.What :store.Item)
+    Declaration(DataProperty(:store.Holding.Amount))
+    DataPropertyDomain(:store.Holding.Amount :store.Holding)
+    DataPropertyRange(:store.Holding.Amount xsd:integer)
+)
+```
+
+`gowl plan` reads the module as though the plan were already code, so the checks
+from `gowl sprawl` run before anything is built. It also reports what the plan
+adds to the linter's findings, leaving out `orphan-class` and `missing-label`. A
+name the plan uses and never declares, usually a typo, shows up as
+`undeclared-entity`.
+
+```
+$ gowl plan -fail-on warning design/holdings.ofn
+compared with main merge-base (c5bb468eaa49): 1 new type(s), 0 changed
+  new:     :store.Holding
+
+warning: same-shape-type: :store.Holding has the same fields as :store.Stock (:store.Item, xsd:integer); consider reusing it
+
+1 finding(s)
+```
+
+`gowl conform` compares the code with the plan, both ways:
+
+| Rule | Severity | Reports |
+|---|---|---|
+| `missing-type` | error | a type the plan names and the code does not have |
+| `missing-field` | error | a field the plan names and the code does not have |
+| `field-mismatch` | error | a field on another struct, or holding another type, than the plan says |
+| `missing-interface` | error | a type that does not satisfy an interface the plan says it satisfies |
+| `missing-package` | error | a package the plan names and the module does not have |
+| `missing-import` | error | an import between packages that the plan names and the code does not have |
+| `unplanned-type` | error | a type the change added that no plan names |
+| `unplanned-package` | error | a package the change added that no plan names |
+| `unplanned-field` | warning | a field the change added or retyped that no plan names |
+| `unplanned-import` | warning | an import the change added that no plan names |
+
+Suppose the code leaves out `Amount` and adds a type nobody planned:
+
+```
+$ gowl conform
+compared with main merge-base (c5bb468eaa49): 1 plan(s), 4 planned item(s) checked
+  plans:     design/holdings.ofn
+
+error: missing-field: the plan names field :store.Holding.Amount, and the code does not have it as an exported field of a module or basic type
+error: unplanned-type: type :store.Memo is new, and no plan names it
+
+2 finding(s)
+```
+
+The plans are the files under `design/` that differ from the base, or the ones
+named with `-design`. The base defaults to where this branch left the default
+branch, so a plan committed partway through a branch still counts. Once merged, a
+plan is part of the base and is no longer checked: it records a decision, and
+later changes write their own. For the same reason, a plan has to reach the
+default branch together with its code, or be named with `-design`. A change that
+adds no exported structure, such as most bug fixes, passes with no plan at all.
+
+A plan can only say as much as `gocode` records:
+
+- **Structure only.** Methods, functions and behaviour are outside it, so a plan
+  does not replace tests.
+- **Exported types and some of their fields.** A field of a map, a function or a
+  type from outside the module is not recorded, so a plan cannot name one and
+  `conform` does not see one being added.
+- **Additions only.** A plan says what should exist, so removing something is not
+  reported.
+- **Go only.** `gocode` reads Go modules.
+
+#### Holding an agent to the plan
+
+Three pieces in [`.claude/`](.claude) make this the order Claude Code works in.
+They run only in Claude Code sessions, so to hold everyone to a plan, also run
+`gowl conform -fail-on warning` in CI.
+
+- The [`design-first`](.claude/skills/design-first/SKILL.md) skill walks through
+  writing the plan, checking it, building to it and verifying the result.
+- [`.claude/hooks/design-gate.sh`](.claude/hooks/design-gate.sh) is a `PreToolUse`
+  hook that refuses an `Edit` or `Write` adding an exported type no `design/*.ofn`
+  file names. A bug fix adds no types, so it never notices one. It lets through
+  anything it cannot read, and `GOWL_DESIGN_GATE=off` turns it off.
+- [`.claude/hooks/conform-check.sh`](.claude/hooks/conform-check.sh) is a `Stop`
+  hook that runs `gowl conform` when a turn ends with Go changes since the base,
+  or since `GOWL_DESIGN_BASE` if that is set. It reports each finding once, as
+  the sprawl hook does. A turn that only wrote a plan has nothing to compare yet,
+  and a tree that does not build skips the check.
+
+The gate sees only `Edit` and `Write`, and only types. Anything changed through a
+shell command, and any field, import or package, is caught at the end of the turn
+instead.
+
 ### Asking questions of Kubernetes' API types
 
 `gowl gocode` copies code into OWL, and a reasoner can do little with the
@@ -935,8 +1055,10 @@ Not yet:
 | `internal/rdf/` | Turtle and RDF/XML readers (generator only) |
 | `internal/rdfowl/` | mapping RDF triples onto the structural model |
 | `internal/vocabgen/` | writing a Go package for one vocabulary |
-| `internal/gocode/` | describing a Go module's code as an ontology (`gowl gocode`), and comparing two versions of it (`gowl sprawl`) |
-| `.claude/hooks/` | Claude Code hooks: ontology checks on `.ofn` edits, and `gowl sprawl` before a turn ends |
+| `internal/gocode/` | describing a Go module's code as an ontology (`gowl gocode`), comparing two versions of it (`gowl sprawl`), and comparing it with a plan (`gowl plan`, `gowl conform`) |
+| `design/` | the plans for changes in progress, and a record of past ones |
+| `.claude/hooks/` | Claude Code hooks: ontology checks on `.ofn` edits, a gate on exported types no plan names, and `gowl sprawl` and `gowl conform` before a turn ends |
+| `.claude/skills/` | Claude Code skills: adding an ontology term, and planning a Go change before writing it |
 | `el/normalize.go` | rewriting axioms into EL normal form |
 | `el/classify.go` | the completion rules and saturation |
 | `el/query.go` | subsumption queries, taxonomy, explanations |

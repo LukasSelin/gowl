@@ -11,10 +11,12 @@
 //	gowl stats   [-json] file.ofn
 //	gowl gocode  [-o file.ofn] [module-dir]
 //	gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
+//	gowl plan    [-base ref] [-fail-on severity] [-json] plan.ofn [module-dir]
+//	gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
 //
-// Exit status is 0 on success, 1 when a check fails (lint or sprawl findings at
-// or above the fail threshold, or a non-empty diff under -exit-code), and 2 on
-// a usage or I/O error.
+// Exit status is 0 on success, 1 when a check fails (lint, sprawl, plan or
+// conform findings at or above the fail threshold, or a non-empty diff under
+// -exit-code), and 2 on a usage or I/O error.
 //
 // Every command except fmt and gocode takes -json, which writes one JSON object
 // to stdout instead of text — including on failure, so a caller that parses
@@ -66,6 +68,10 @@ func run(args []string) int {
 		return cmdStats(args[1:])
 	case "sprawl":
 		return cmdSprawl(args[1:])
+	case "plan":
+		return cmdPlan(args[1:])
+	case "conform":
+		return cmdConform(args[1:])
 	case "gocode":
 		return cmdGoCode(args[1:])
 	case "help", "-h", "--help":
@@ -89,6 +95,8 @@ func usage() {
   gowl stats   [-json] file.ofn
   gowl gocode  [-o file.ofn] [module-dir]
   gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
+  gowl plan    [-base ref] [-fail-on severity] [-json] plan.ofn [module-dir]
+  gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
 
 classify runs the OWL 2 EL reasoner: it infers the class hierarchy, finds
 classes that cannot have instances, and explains why a subsumption holds.
@@ -101,6 +109,14 @@ sprawl runs gocode on the module and on the same module at -base (default
 HEAD), and reports what the change added beside the existing types rather
 than through them: a type whose fields repeat another's, and a new type that
 connects to nothing that was there.
+
+plan and conform keep a change to a design written before it. A plan is an
+ontology naming what the change will add, in the names gocode writes. plan
+checks it before any code exists, as though it were already built. conform
+compares the code with it both ways: what the plan names that the code lacks,
+and what the change added that the plan does not name. Unless -design says
+otherwise, the plans are the files under design/ that differ from the base,
+which defaults to where this branch left the default branch.
 
 Every command except fmt and gocode takes -json for machine-readable output.
 Run "gowl <command> -h" for the flags of one command.

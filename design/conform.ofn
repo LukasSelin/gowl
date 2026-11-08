@@ -1,0 +1,35 @@
+# The plan for "gowl plan" and "gowl conform", written before the code.
+#
+# It names only what the change adds, and the existing types those additions
+# point at. The names are the ones gowl gocode writes, so this file can be
+# compared with the code once the code exists.
+
+Prefix(:=<https://github.com/LukasSelin/gowl/self#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+
+Ontology(<https://github.com/LukasSelin/gowl/design/conform>
+
+    # Existing types the new one refers to.
+    Declaration(Class(:lint.Finding))
+    Declaration(Class(:owl.IRI))
+
+    Declaration(Class(:gocode.Conformance))
+    AnnotationAssertion(rdfs:label :gocode.Conformance "gocode.Conformance")
+    AnnotationAssertion(rdfs:comment :gocode.Conformance "How a module measures up against a plan: what was checked, what could not be, and where the two differ.")
+
+    Declaration(DataProperty(:gocode.Conformance.Checked))
+    AnnotationAssertion(rdfs:label :gocode.Conformance.Checked "gocode.Conformance.Checked")
+    DataPropertyDomain(:gocode.Conformance.Checked :gocode.Conformance)
+    DataPropertyRange(:gocode.Conformance.Checked xsd:integer)
+
+    Declaration(ObjectProperty(:gocode.Conformance.Unchecked))
+    AnnotationAssertion(rdfs:label :gocode.Conformance.Unchecked "gocode.Conformance.Unchecked")
+    ObjectPropertyDomain(:gocode.Conformance.Unchecked :gocode.Conformance)
+    ObjectPropertyRange(:gocode.Conformance.Unchecked :owl.IRI)
+
+    Declaration(ObjectProperty(:gocode.Conformance.Findings))
+    AnnotationAssertion(rdfs:label :gocode.Conformance.Findings "gocode.Conformance.Findings")
+    ObjectPropertyDomain(:gocode.Conformance.Findings :gocode.Conformance)
+    ObjectPropertyRange(:gocode.Conformance.Findings :lint.Finding)
+)
