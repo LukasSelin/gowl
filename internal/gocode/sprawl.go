@@ -70,14 +70,15 @@ func Compare(before, after *owl.Ontology) Delta {
 		}
 	}
 	d.Findings = append(d.Findings, newOrphans(after, d.Added, now, existed)...)
-	sortFindings(d.Findings)
+	SortFindings(d.Findings)
 	return d
 }
 
-// sortFindings orders findings as [lint.Run] does: most severe first, then by
+// SortFindings orders findings as [lint.Run] does: most severe first, then by
 // rule, then by subject. The message settles the rest, because some checks walk
-// maps and two findings can share a rule and a subject.
-func sortFindings(fs []lint.Finding) {
+// maps and two findings can share a rule and a subject. It sorts fs in place
+// and returns it, so that findings from several checks can be merged in one go.
+func SortFindings(fs []lint.Finding) []lint.Finding {
 	sort.SliceStable(fs, func(i, j int) bool {
 		a, b := fs[i], fs[j]
 		if a.Severity != b.Severity {
@@ -91,6 +92,7 @@ func sortFindings(fs []lint.Finding) {
 		}
 		return a.Message < b.Message
 	})
+	return fs
 }
 
 // slot is one field as Build records it: the class or datatype it holds.

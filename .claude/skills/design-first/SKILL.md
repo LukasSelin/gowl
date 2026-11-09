@@ -13,8 +13,13 @@ honest: `gowl conform` compares the two, so a type that crept in or a promise
 that was dropped shows up instead of passing unnoticed.
 
 A plan covers structure only: exported types, their fields, the interfaces they
-satisfy, packages, and imports between packages. It says nothing about methods,
-functions or behaviour, so it does not replace tests.
+satisfy, the methods of interfaces, packages, and imports between packages. It
+says nothing about functions, other types' methods or behaviour, so it does not
+replace tests.
+
+Some decisions outlive a change: what the core may import, which layer a package
+is in, which interfaces may not change. Those are not in a plan but in
+`design/invariants.ofn`, which is checked on every change and never retired.
 
 ## 1. See what is already there
 
@@ -38,11 +43,15 @@ additions point at. Names are the ones `gowl gocode` writes:
 | field holding a module type: `Item *Item` (also `[]Item`, `[]*Item`) | `Declaration(ObjectProperty(:store.Holding.Item))`, `ObjectPropertyDomain(:store.Holding.Item :store.Holding)`, `ObjectPropertyRange(:store.Holding.Item :store.Item)` |
 | field holding a basic type: `Count int` | `Declaration(DataProperty(:store.Holding.Count))`, `DataPropertyDomain(:store.Holding.Count :store.Holding)`, `DataPropertyRange(:store.Holding.Count xsd:integer)` |
 | satisfies module interface `store.Priced` | `SubClassOf(:store.Holding :store.Priced)` |
+| interface method `Price(item Item) (int, error)` on `store.Priced` | `AnnotationAssertion(:method :store.Priced "Price(item Item) (int, error)")` |
 | package `gowl/internal/store` | `ClassAssertion(:Package :package.gowl.internal.store)` |
 | that package imports `gowl/owl` | `ObjectPropertyAssertion(:imports :package.gowl.internal.store :package.gowl.owl)` |
 
 Strings are `xsd:string`, booleans `xsd:boolean`, integers `xsd:integer` and
-floats `xsd:double`. Leave out fields of maps, functions and types from outside
+floats `xsd:double`. A method is written as Go writes it; parameter names are
+optional, and a bare type of the interface's own package, like `Item` above,
+means `store.Item`. Name every method an interface you add or change declares,
+unexported ones included. Leave out fields of maps, functions and types from outside
 the module, and unexported anything: gocode records none of those, so a plan
 that names them can never be satisfied.
 
@@ -85,6 +94,15 @@ This reads the module as though the plan were already code:
 - `undeclared-entity`: usually a typo in a name.
 - `punned-entity`: the plan uses a name as something else than the code does, such
   as an object property for what is a data field.
+- `invariant-violated` and the other invariant rules: the plan would break a rule
+  in `design/invariants.ofn`. The report says which rule, and why it exists.
+  Change the plan. If the rule is what is wrong, change it in
+  `design/invariants.ofn` and tell the user which rule and why; that is a
+  decision about the module, not about this change.
+
+A plan that adds a package also places it: add a `ClassAssertion` putting the new
+package in one of the groups in `design/invariants.ofn`, or the plan check reports
+it as unplaced.
 
 Fix the plan until you are happy with the result. Nothing has been built yet, so
 this is the moment to change your mind.
@@ -110,9 +128,17 @@ go run ./cmd/gowl conform -fail-on warning
 
 It compares the plans under `design/` that differ from the base with the code,
 both ways. A `missing-*` finding is a promise not kept, `unplanned-*` is
-something nobody decided on, and `field-mismatch` is a field that came out
-differently. The same check runs when you end a turn, and reports each finding
-once.
+something nobody decided on, and `field-mismatch` and `method-mismatch` are
+something that came out differently. The same check runs when you end a turn,
+and reports each finding once.
+
+```bash
+go run ./cmd/gowl invariants -fail-on warning
+```
+
+checks the code against `design/invariants.ofn`. Each `invariant-violated` finding
+names the rule, the package that breaks it, and the imports to blame. It also
+runs when you end a turn.
 
 **When the plan was wrong**, change it, and tell the user what changed and why. A
 plan that moved because of what you learned is fine. Editing one only to silence a

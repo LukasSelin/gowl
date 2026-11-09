@@ -347,3 +347,76 @@ func TestOverlayKeepsEachAxiomOnce(t *testing.T) {
 		t.Errorf("iri = %s, want the base's", o.IRI)
 	}
 }
+
+// What a change imports from outside the module is not a plan's business: the
+// invariants say what the module may depend on. So a new import of fmt is no
+// unplanned package and no unplanned import, and a planned package that
+// imports it needs only the plan for the package.
+func TestConformLeavesImportsFromOutsideToTheInvariants(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	core := "// Package core is the core.\npackage core\n\n// Thing is a thing.\ntype Thing struct{ Name string }\n"
+	usesStrings := "package core\n\nimport \"strings\"\n\nvar _ = strings.ToUpper\n"
+	billing := "// Package billing bills.\npackage billing\n\nimport \"fmt\"\n\nvar _ = fmt.Sprint\n"
+
+	before := writeModule(t, map[string]string{"core/core.go": core})
+	after := writeModule(t, map[string]string{"core/core.go": core, "core/use.go": usesStrings, "billing/billing.go": billing})
+
+	wantFindings(t, Conform(shopPlan(t, "ClassAssertion(:Package :package.example.com.shop.billing)"), before, after).Findings)
+	wantFindings(t, Conform(owl.New(""), before, after).Findings,
+		"unplanned-package package.example.com.shop.billing")
+}
+
+// A plan that does name an import from outside the module has it checked.
+func TestConformChecksAPlannedImportFromOutside(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	core := "// Package core is the core.\npackage core\n\n// Thing is a thing.\ntype Thing struct{ Name string }\n"
+	withStrings := writeModule(t, map[string]string{"core/core.go": core, "core/use.go": "package core\n\nimport \"strings\"\n\nvar _ = strings.ToUpper\n"})
+	without := writeModule(t, map[string]string{"core/core.go": core})
+	plan := shopPlan(t, "ObjectPropertyAssertion(:imports :package.example.com.shop.core :package.strings)")
+
+	c := Conform(plan, without, withStrings)
+	wantFindings(t, c.Findings)
+	if c.Checked != 2 { // the module's package, and its import; strings is no package of the module
+		t.Errorf("checked = %d, want 2", c.Checked)
+	}
+	wantFindings(t, Conform(plan, without, without).Findings, "missing-import package.example.com.shop.core")
+}
+
+// An interface's methods are its contract: one the change adds needs a plan,
+// and the plan's version of it is held to the code's.
+func TestConformMethods(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	before := buildShop(t, shopBefore)
+	after := buildShop(t, strings.Replace(shopBefore, "type Priced interface{ Price() int }",
+		"type Priced interface {\n\tPrice() int\n\tCurrency() string\n}", 1))
+	priced := "Declaration(Class(:shop.Priced))\n"
+
+	for _, c := range []struct {
+		name, plan string
+		want       []string
+	}{
+		{"no plan", "", []string{"unplanned-method shop.Priced"}},
+		// Names and spacing are the plan writer's own.
+		{"planned", priced + `AnnotationAssertion(:method :shop.Priced "Currency() (code string)")`, nil},
+		{"mismatch", priced + `AnnotationAssertion(:method :shop.Priced "Currency() int")`, []string{"method-mismatch shop.Priced"}},
+		{"missing", priced + `AnnotationAssertion(:method :shop.Priced "Currency() string")
+			AnnotationAssertion(:method :shop.Priced "Discount(pct float64) int")`, []string{"missing-method shop.Priced"}},
+		{"malformed", priced + `AnnotationAssertion(:method :shop.Priced "Currency(")`,
+			[]string{"malformed-method shop.Priced", "unplanned-method shop.Priced"}},
+		// A plan that gives methods to a type it does not even declare still
+		// gets told the type is missing.
+		{"no such type", priced + `AnnotationAssertion(:method :shop.Priced "Currency() string")
+			AnnotationAssertion(:method :shop.Ghost "Boo()")`, []string{"missing-type shop.Ghost"}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			plan := owl.New("")
+			if c.plan != "" {
+				plan = shopPlan(t, c.plan)
+			}
+			wantFindings(t, Conform(plan, before, after).Findings, c.want...)
+		})
+	}
+
+	// Methods that were there before the change are left alone.
+	wantFindings(t, Conform(owl.New(""), after, after).Findings)
+}

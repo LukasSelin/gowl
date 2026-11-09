@@ -46,6 +46,7 @@ package zoo
 
 import (
 	"context"
+	"io"
 
 	"example.com/keeper"
 	"example.com/zoo/pen"
@@ -53,6 +54,14 @@ import (
 
 // Animal is anything kept in the zoo.
 type Animal interface{ Name() string }
+
+// Feeder is an animal that can be fed. Only the zoo can make one.
+type Feeder interface {
+	Animal
+	io.Reader
+	Feed(ctx context.Context, portions ...int) (left int, err error)
+	seal()
+}
 
 // Cat is an animal that lives in a pen.
 type Cat struct {
@@ -89,12 +98,27 @@ type Ghost struct{}
 		"Ontology(<https://example.com/zoo>",
 		"SubClassOf(:zoo.Cat :zoo.Animal)",
 		"ObjectPropertyAssertion(:imports :package.example.com.zoo :package.example.com.zoo.pen)",
+		// What the module imports from outside it is recorded too, dependency
+		// and standard library alike, but not what those import in turn.
+		"ObjectPropertyAssertion(:imports :package.example.com.zoo :package.example.com.keeper)",
+		"ObjectPropertyAssertion(:imports :package.example.com.zoo :package.context)",
+		"ClassAssertion(:ExternalPackage :package.example.com.keeper)",
+		"ClassAssertion(:ExternalPackage :package.context)",
+		"DisjointClasses(:ExternalPackage :Package)",
+		// An interface lists the methods it declares, its seal included, and
+		// those of an embedded interface from outside the module; an embedded
+		// interface of the module is a superclass instead.
+		"SubClassOf(:zoo.Feeder :zoo.Animal)",
+		`AnnotationAssertion(:method :zoo.Animal "Name() string"^^xsd:string)`,
+		`AnnotationAssertion(:method :zoo.Feeder "Feed(context.Context, ...int) (int, error)"^^xsd:string)`,
+		`AnnotationAssertion(:method :zoo.Feeder "Read([]uint8) (int, error)"^^xsd:string)`,
+		`AnnotationAssertion(:method :zoo.Feeder "seal()"^^xsd:string)`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %s", want)
 		}
 	}
-	for _, unwanted := range []string{"Ghost", "package.example.com.keeper"} {
+	for _, unwanted := range []string{"Ghost", "package.example.com.zoo.nested", `:zoo.Feeder "Name() string"`, "ClassAssertion(:Package :package.example.com.keeper)", ":package.context :"} {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("describes %s, which is not part of the module", unwanted)
 		}
