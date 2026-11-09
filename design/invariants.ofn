@@ -1,0 +1,140 @@
+# The rules gowl's code keeps on every change.
+#
+# A plan in design/ describes one change and is retired once it is merged. This
+# file is not: "gowl invariants" checks the code against it whenever either one
+# changes, and "gowl plan" checks every plan against it before the code is
+# written. Change a rule here first, with a reason, and the code after it.
+#
+# The code supplies the facts: which packages there are, and what each imports.
+# The ClassAssertions below put packages in groups. Every other logical axiom is
+# a rule, checked over those facts under the closed-world assumption: what the
+# code does not do, it does not do. An rdfs:comment on a rule says why it
+# exists, and is what a broken rule is reported by.
+
+Prefix(:=<https://github.com/LukasSelin/gowl/self#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
+
+    # The words gocode describes the code with.
+    Declaration(Class(:Package))
+    Declaration(Class(:ExternalPackage))
+    Declaration(ObjectProperty(:imports))
+    Declaration(AnnotationProperty(:method))
+
+    # Groups.
+    Declaration(Class(:Library))
+    AnnotationAssertion(rdfs:comment :Library "The public packages: what a program using gowl imports.")
+    Declaration(Class(:Internal))
+    AnnotationAssertion(rdfs:comment :Internal "Packages only gowl's own tools use.")
+    Declaration(Class(:Tool))
+    AnnotationAssertion(rdfs:comment :Tool "Commands and examples: programs, at the edge.")
+    Declaration(Class(:Pure))
+    AnnotationAssertion(rdfs:comment :Pure "Internal packages that, like the library, do no I/O of their own.")
+    Declaration(Class(:Effectful))
+    AnnotationAssertion(rdfs:comment :Effectful "Standard library packages that reach outside the process: files, processes, the network, logs.")
+
+    Declaration(ObjectProperty(:dependsOn))
+    AnnotationAssertion(rdfs:comment :dependsOn "Imports, followed any distance.")
+    SubObjectPropertyOf(:imports :dependsOn)
+    TransitiveObjectProperty(:dependsOn)
+
+    Declaration(NamedIndividual(:package.gowl.owl))
+    Declaration(NamedIndividual(:package.gowl.el))
+    Declaration(NamedIndividual(:package.gowl.lint))
+    Declaration(NamedIndividual(:package.gowl.vocab))
+    Declaration(NamedIndividual(:package.gowl.vocab.dc))
+    Declaration(NamedIndividual(:package.gowl.vocab.dcat))
+    Declaration(NamedIndividual(:package.gowl.vocab.dcterms))
+    Declaration(NamedIndividual(:package.gowl.vocab.foaf))
+    Declaration(NamedIndividual(:package.gowl.vocab.org))
+    Declaration(NamedIndividual(:package.gowl.vocab.prov))
+    Declaration(NamedIndividual(:package.gowl.vocab.rdf))
+    Declaration(NamedIndividual(:package.gowl.vocab.rdfs))
+    Declaration(NamedIndividual(:package.gowl.vocab.schema))
+    Declaration(NamedIndividual(:package.gowl.vocab.skos))
+    Declaration(NamedIndividual(:package.gowl.vocab.skosxl))
+    Declaration(NamedIndividual(:package.gowl.vocab.time))
+    ClassAssertion(:Library :package.gowl.owl)
+    ClassAssertion(:Library :package.gowl.el)
+    ClassAssertion(:Library :package.gowl.lint)
+    ClassAssertion(:Library :package.gowl.vocab)
+    ClassAssertion(:Library :package.gowl.vocab.dc)
+    ClassAssertion(:Library :package.gowl.vocab.dcat)
+    ClassAssertion(:Library :package.gowl.vocab.dcterms)
+    ClassAssertion(:Library :package.gowl.vocab.foaf)
+    ClassAssertion(:Library :package.gowl.vocab.org)
+    ClassAssertion(:Library :package.gowl.vocab.prov)
+    ClassAssertion(:Library :package.gowl.vocab.rdf)
+    ClassAssertion(:Library :package.gowl.vocab.rdfs)
+    ClassAssertion(:Library :package.gowl.vocab.schema)
+    ClassAssertion(:Library :package.gowl.vocab.skos)
+    ClassAssertion(:Library :package.gowl.vocab.skosxl)
+    ClassAssertion(:Library :package.gowl.vocab.time)
+
+    Declaration(NamedIndividual(:package.gowl.internal.gocode))
+    Declaration(NamedIndividual(:package.gowl.internal.icv))
+    Declaration(NamedIndividual(:package.gowl.internal.rdf))
+    Declaration(NamedIndividual(:package.gowl.internal.rdfowl))
+    Declaration(NamedIndividual(:package.gowl.internal.vocabgen))
+    ClassAssertion(:Internal :package.gowl.internal.gocode)
+    ClassAssertion(:Internal :package.gowl.internal.icv)
+    ClassAssertion(:Internal :package.gowl.internal.rdf)
+    ClassAssertion(:Internal :package.gowl.internal.rdfowl)
+    ClassAssertion(:Internal :package.gowl.internal.vocabgen)
+    ClassAssertion(:Pure :package.gowl.internal.icv)
+    ClassAssertion(:Pure :package.gowl.internal.rdf)
+    ClassAssertion(:Pure :package.gowl.internal.rdfowl)
+    ClassAssertion(:Pure :package.gowl.internal.vocabgen)
+
+    Declaration(NamedIndividual(:package.gowl.cmd.gowl))
+    Declaration(NamedIndividual(:package.gowl.cmd.vocabgen))
+    Declaration(NamedIndividual(:package.gowl.examples.k8s))
+    Declaration(NamedIndividual(:package.gowl.examples.self))
+    ClassAssertion(:Tool :package.gowl.cmd.gowl)
+    ClassAssertion(:Tool :package.gowl.cmd.vocabgen)
+    ClassAssertion(:Tool :package.gowl.examples.k8s)
+    ClassAssertion(:Tool :package.gowl.examples.self)
+
+    Declaration(NamedIndividual(:package.os))
+    Declaration(NamedIndividual(:package.os.exec))
+    Declaration(NamedIndividual(:package.os.signal))
+    Declaration(NamedIndividual(:package.net))
+    Declaration(NamedIndividual(:package.net.http))
+    Declaration(NamedIndividual(:package.syscall))
+    Declaration(NamedIndividual(:package.log))
+    Declaration(NamedIndividual(:package.database.sql))
+    ClassAssertion(:Effectful :package.os)
+    ClassAssertion(:Effectful :package.os.exec)
+    ClassAssertion(:Effectful :package.os.signal)
+    ClassAssertion(:Effectful :package.net)
+    ClassAssertion(:Effectful :package.net.http)
+    ClassAssertion(:Effectful :package.syscall)
+    ClassAssertion(:Effectful :package.log)
+    ClassAssertion(:Effectful :package.database.sql)
+
+    # Rules.
+
+    SubClassOf(Annotation(rdfs:comment "Every package is in a group on purpose, so a new one is added here before it is written")
+        :Package ObjectUnionOf(:Library :Internal :Tool))
+
+    SubClassOf(Annotation(rdfs:comment "owl is the model the rest is built on, so it depends on nothing else in the module")
+        ObjectOneOf(:package.gowl.owl) ObjectAllValuesFrom(:imports :ExternalPackage))
+
+    SubClassOf(Annotation(rdfs:comment "The library stands on its own: it never reaches into internal packages or tools")
+        :Library ObjectAllValuesFrom(:imports ObjectUnionOf(:Library :ExternalPackage)))
+
+    DisjointClasses(Annotation(rdfs:comment "The library and the pure internal packages do no I/O: effects stay at the edges, in the tools and in gocode")
+        ObjectUnionOf(:Library :Pure) ObjectSomeValuesFrom(:dependsOn :Effectful))
+
+    SubClassOf(Annotation(rdfs:comment "The invariant checker is the trusted core, so it stays small: owl and the standard library, and nothing else")
+        ObjectOneOf(:package.gowl.internal.icv) ObjectAllValuesFrom(:imports ObjectUnionOf(ObjectOneOf(:package.gowl.owl) :ExternalPackage)))
+
+    # Contracts. These interfaces are what the rest of the module, and every
+    # program using gowl, is written against; their methods change only here first.
+    AnnotationAssertion(:method :owl.Node "String() string")
+    AnnotationAssertion(:method :owl.Entity "IRI() IRI")
+    AnnotationAssertion(:method :owl.Entity "Kind() Kind")
+    # The seal: only package owl can make an axiom.
+    AnnotationAssertion(:method :owl.Axiom "isAxiom()")
+)

@@ -72,6 +72,8 @@ func run(args []string) int {
 		return cmdPlan(args[1:])
 	case "conform":
 		return cmdConform(args[1:])
+	case "invariants":
+		return cmdInvariants(args[1:])
 	case "gocode":
 		return cmdGoCode(args[1:])
 	case "help", "-h", "--help":
@@ -95,8 +97,9 @@ func usage() {
   gowl stats   [-json] file.ofn
   gowl gocode  [-o file.ofn] [module-dir]
   gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
-  gowl plan    [-base ref] [-fail-on severity] [-json] plan.ofn [module-dir]
+  gowl plan    [-base ref] [-invariants file] [-fail-on severity] [-json] plan.ofn [module-dir]
   gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
+  gowl invariants [-file invariants.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
 
 classify runs the OWL 2 EL reasoner: it infers the class hierarchy, finds
 classes that cannot have instances, and explains why a subsumption holds.
@@ -117,6 +120,11 @@ compares the code with it both ways: what the plan names that the code lacks,
 and what the change added that the plan does not name. Unless -design says
 otherwise, the plans are the files under design/ that differ from the base,
 which defaults to where this branch left the default branch.
+
+invariants checks the code against design/invariants.ofn: rules about its
+packages, what they may import and which interfaces have fixed methods, that
+hold on every change rather than for one. plan checks a plan against them too,
+so a plan that would break one fails before any code exists.
 
 Every command except fmt and gocode takes -json for machine-readable output.
 Run "gowl <command> -h" for the flags of one command.

@@ -18,9 +18,14 @@
 //     object property with the struct as domain and the field type as range,
 //     and a field of a basic type becomes a data property with an XSD range.
 //     An embedded field counts, under its type's name;
-//   - every package is an individual of :Package, linked by :imports to the
-//     module packages it imports, and every class is tied to its package with
-//     the annotation :definedIn.
+//   - every package of the module is an individual of :Package, linked by
+//     :imports to each package it imports directly. A package from outside the
+//     module that one of them imports, standard library or dependency, is an
+//     individual of :ExternalPackage; only the module's own imports are
+//     recorded, not what those packages import in turn;
+//   - every class is tied to its package with the annotation :definedIn, and
+//     an interface lists the methods it declares with the annotation :method,
+//     as Name(parameter types) result types.
 //
 // Only SubClassOf edges that are not implied by others are written, so the
 // class hierarchy reads as the direct one.
@@ -51,6 +56,25 @@ import (
 // a published module's is, so it keeps the IRI it was first written with; any
 // other module is named by its module path under https://.
 const selfIRI = "https://github.com/LukasSelin/gowl/self"
+
+// The local names of the words Build talks about code with, in the module's
+// namespace. They describe the code rather than being part of it, so the
+// checks that compare a plan with the code leave them out.
+const (
+	vocabPackage         = "Package"
+	vocabExternalPackage = "ExternalPackage"
+	vocabImports         = "imports"
+	vocabMethod          = "method"
+	vocabDefinedIn       = "definedIn"
+)
+
+// packageLocalName is the local name of the individual standing for the
+// package with the given import path: gowl/internal/gocode becomes
+// package.gowl.internal.gocode. The mapping loses where the slashes were, so
+// a/b.c and a.b/c share a name; Go module paths make that rare in practice.
+func packageLocalName(path string) string {
+	return "package." + strings.ReplaceAll(path, "/", ".")
+}
 
 // pkg is one type-checked package of the module.
 type pkg struct {
@@ -201,6 +225,34 @@ func exportData(root string) (map[string]string, error) {
 	return files, nil
 }
 
+// KnownPackages lists the import paths, besides the module's own, that a
+// module's invariants can name and expect to mean something: every package of
+// the standard library, and every package the module depends on. A name that
+// is none of these is usually misspelled, and a misspelled package in a rule
+// that forbids it quietly forbids nothing.
+func KnownPackages(root string) ([]string, error) {
+	seen := map[string]bool{}
+	for _, args := range [][]string{{"list", "std"}, {"list", "-deps", "./..."}} {
+		cmd := exec.Command("go", args...)
+		cmd.Dir = root
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+		out, err := cmd.Output()
+		if err != nil {
+			return nil, fmt.Errorf("go %s in %s: %v\n%s", strings.Join(args, " "), root, err, bytes.TrimSpace(stderr.Bytes()))
+		}
+		for _, path := range strings.Fields(string(out)) {
+			seen[path] = true
+		}
+	}
+	out := make([]string, 0, len(seen))
+	for path := range seen {
+		out = append(out, path)
+	}
+	sort.Strings(out)
+	return out, nil
+}
+
 // Build type-checks the module rooted at root — the directory holding its
 // go.mod — and returns the ontology that describes it.
 func Build(root string) (*owl.Ontology, error) {
@@ -247,21 +299,37 @@ func Build(root string) (*owl.Ontology, error) {
 	o.Annotate(owl.RDFSComment, owl.Str(about))
 
 	// The vocabulary for talking about Go code.
-	pkgClass := o.Class(":Package")
+	pkgClass := o.Class(":" + vocabPackage)
 	o.Define(pkgClass).Label("Go package").Comment("A Go package of the " + module + " module.")
-	imports := o.ObjectProperty(":imports")
-	o.DefineObjectProperty(imports).Domain(pkgClass).Range(pkgClass).Irreflexive().
-		Label("imports").Comment("The subject package imports the object package directly.")
-	definedIn := o.AnnotationProperty(":definedIn")
+	extClass := o.Class(":" + vocabExternalPackage)
+	o.Define(extClass).Label("external Go package").
+		Comment("A package from outside the " + module + " module that one of its packages imports: part of the standard library, or of a dependency.").
+		DisjointWith(pkgClass)
+	imports := o.ObjectProperty(":" + vocabImports)
+	// No range: the package imported is a :Package or an :ExternalPackage.
+	o.DefineObjectProperty(imports).Domain(pkgClass).Irreflexive().
+		Label("imports").Comment("The subject package imports the object package directly. The object is a :Package or an :ExternalPackage.")
+	definedIn := o.AnnotationProperty(":" + vocabDefinedIn)
 	o.Declare(definedIn)
 	o.Add(owl.AnnotationAssertion{Property: owl.RDFSLabel, Subject: definedIn.IRI(), Value: owl.Str("defined in")})
 	o.Add(owl.AnnotationAssertion{Property: owl.RDFSComment, Subject: definedIn.IRI(), Value: owl.Str("The package whose source declares the subject Go type.")})
+	method := o.AnnotationProperty(":" + vocabMethod)
+	o.Declare(method)
+	o.Add(owl.AnnotationAssertion{Property: owl.RDFSLabel, Subject: method.IRI(), Value: owl.Str("method")})
+	o.Add(owl.AnnotationAssertion{Property: owl.RDFSComment, Subject: method.IRI(), Value: owl.Str("A method the subject Go interface declares, as Name(parameter types) result types.")})
 
 	pkgIndividual := func(path string) owl.NamedIndividual {
-		return o.Individual(":package." + strings.ReplaceAll(path, "/", "."))
+		return o.Individual(":" + packageLocalName(path))
 	}
 
-	// Packages, and the imports among them.
+	// Packages, and what they import. Whether an import is the module's own is
+	// decided by the packages found above rather than by its path, so a nested
+	// module, which has the module's path as a prefix, counts as external.
+	own := map[string]bool{}
+	for _, p := range pkgs {
+		own[p.path] = true
+	}
+	external := map[string]bool{}
 	for _, p := range pkgs {
 		ind := pkgIndividual(p.path)
 		b := o.DefineIndividual(ind).Type(pkgClass).Label(p.path)
@@ -270,14 +338,18 @@ func Build(root string) (*owl.Ontology, error) {
 		}
 		var deps []string
 		for _, imp := range p.types.Imports() {
-			if l.inModule(imp.Path()) {
-				deps = append(deps, imp.Path())
+			deps = append(deps, imp.Path())
+			if !own[imp.Path()] {
+				external[imp.Path()] = true
 			}
 		}
 		sort.Strings(deps)
 		for _, d := range deps {
 			b.Fact(imports, pkgIndividual(d))
 		}
+	}
+	for path := range external {
+		o.DefineIndividual(pkgIndividual(path)).Type(extClass).Label(path)
 	}
 
 	// Exported named types become classes.
@@ -326,6 +398,13 @@ func Build(root string) (*owl.Ontology, error) {
 	for _, t := range all {
 		for _, s := range direct(t, supers) {
 			builders[t].SubClassOf(s.class)
+		}
+	}
+
+	// An interface's methods are its contract, so each is written down.
+	for _, t := range all {
+		for _, sig := range interfaceMethods(t.obj, byObj) {
+			builders[t].Annotate(method, owl.Str(sig))
 		}
 	}
 

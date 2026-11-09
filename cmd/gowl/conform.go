@@ -24,6 +24,7 @@ const designDir = "design"
 func cmdPlan(args []string) int {
 	fs := flag.NewFlagSet("plan", flag.ContinueOnError)
 	base := fs.String("base", "", "the commit to plan against (default: where this branch left the default branch)")
+	invFile := fs.String("invariants", "", "the invariants to check the plan against (default: design/invariants.ofn, if there is one)")
 	failOn := fs.String("fail-on", "error", "lowest severity that fails the run: info, warning or error")
 	jsonOut := fs.Bool("json", false, "write one JSON object to stdout instead of text")
 	files, err := parseArgs(fs, args)
@@ -37,6 +38,10 @@ func cmdPlan(args []string) int {
 	root := "."
 	if len(files) == 2 {
 		root = files[1]
+	}
+	if isInvariants(files[0]) {
+		fmt.Fprintf(os.Stderr, "gowl plan: %s holds the invariants, not a plan; gowl invariants checks it\n", filepath.ToSlash(files[0]))
+		return exitProblem
 	}
 
 	threshold, err := lint.ParseSeverity(*failOn)
@@ -54,12 +59,33 @@ func cmdPlan(args []string) int {
 	}
 
 	d := gocode.ReviewPlan(plan, before)
+
+	// The invariants, read against the module as though the plan were built.
+	inv, invPath, err := loadInvariants(root, *invFile, before)
+	if err != nil {
+		return failWith(*jsonOut, err)
+	}
+	var ri gocode.Conformance
+	if inv != nil {
+		known, err := knownPackages(root, before, plan)
+		if err != nil {
+			return failWith(*jsonOut, err)
+		}
+		ri = gocode.ReviewInvariants(inv, plan, before, known)
+		d.Findings = gocode.SortFindings(append(d.Findings, ri.Findings...))
+	}
+
 	if *jsonOut {
 		writeJSON(planDoc{
-			Design:    filepath.ToSlash(files[0]),
-			sprawlDoc: sprawlJSON(filepath.ToSlash(root), label, commit, before, d, d.Findings, 0, threshold),
+			Design:            filepath.ToSlash(files[0]),
+			Invariants:        filepath.ToSlash(invPath),
+			InvariantsChecked: ri.Checked,
+			sprawlDoc:         sprawlJSON(filepath.ToSlash(root), label, commit, before, d, d.Findings, 0, threshold),
 		})
 	} else {
+		if inv != nil {
+			fmt.Printf("checked against %s: %d rule(s)\n", filepath.ToSlash(invPath), ri.Checked)
+		}
 		printSprawl(label, commit, before, d, d.Findings, 0)
 	}
 	if worst, any := lint.MaxSeverity(d.Findings); any && worst >= threshold {
@@ -79,6 +105,9 @@ func cmdConform(args []string) int {
 	jsonOut := fs.Bool("json", false, "write one JSON object to stdout instead of text")
 	var named []string
 	fs.Func("design", "a plan file to check against; may be repeated (default: the plans under design/ that differ from the base)", func(s string) error {
+		if isInvariants(s) {
+			return fmt.Errorf("%s holds the invariants, not a plan; gowl invariants checks it", filepath.ToSlash(s))
+		}
 		named = append(named, s)
 		return nil
 	})
@@ -184,7 +213,8 @@ func resolveBase(dir, base string) (rev, label string) {
 }
 
 // changedDesigns lists the plans under dir/design that differ from rev, tracked
-// or not, leaving out any the change deletes.
+// or not, leaving out any the change deletes, and the invariants, which are not
+// a plan.
 func changedDesigns(dir, rev string) ([]string, error) {
 	tracked, err := git(dir, "diff", "--name-only", "--relative", "--diff-filter=d", rev, "--", designDir)
 	if err != nil {
@@ -196,7 +226,7 @@ func changedDesigns(dir, rev string) ([]string, error) {
 	}
 	var out []string
 	for _, name := range strings.Fields(tracked + "\n" + untracked) {
-		if strings.EqualFold(filepath.Ext(name), ".ofn") {
+		if strings.EqualFold(filepath.Ext(name), ".ofn") && !isInvariants(name) {
 			out = append(out, filepath.Join(dir, filepath.FromSlash(name)))
 		}
 	}

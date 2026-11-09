@@ -431,6 +431,10 @@ note: axioms outside OWL 2 EL were skipped, so a subsumption that is not
 reported may still be entailed
 ```
 
+To check a finite set of facts against axioms, rather than infer from them,
+see [Invariants that outlive a change](#invariants-that-outlive-a-change): a
+closed-world check of a small fragment, with counterexamples.
+
 Results are always **sound** - what it derives is entailed. Skipping axioms
 costs **completeness**, so when `Unsupported()` is non-empty, a subsumption it
 does not report is not proof that the subsumption fails. Individuals are not
@@ -487,8 +491,9 @@ gowl fmt     [-w] [-canonical] file.ofn
 gowl stats   [-json] file.ofn
 gowl gocode  [-o file.ofn] [module-dir]
 gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
-gowl plan    [-base ref] [-fail-on severity] [-json] plan.ofn [module-dir]
+gowl plan    [-base ref] [-invariants file] [-fail-on severity] [-json] plan.ofn [module-dir]
 gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
+gowl invariants [-file invariants.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
 ```
 
 `classify` runs the EL reasoner. `-axioms` writes the inferred taxonomy as an
@@ -503,11 +508,13 @@ the working tree and on a base commit, to check what a change did to the
 module's types. See [Catching sprawl](#catching-sprawl). `plan` and `conform`
 keep a change to a design written before it. See
 [Planning a change before writing it](#planning-a-change-before-writing-it).
+`invariants` checks the code against the rules a module keeps on every change.
+See [Invariants that outlive a change](#invariants-that-outlive-a-change).
 
 Exit status is 0 on success, 1 when a check fails (findings at or above
 `-fail-on`, or a non-empty diff under `-exit-code`), and 2 on a usage or parse
-error — so `gowl lint`, `gowl conform` and `gowl diff -exit-code` drop straight
-into CI.
+error — so `gowl lint`, `gowl conform`, `gowl invariants` and
+`gowl diff -exit-code` drop straight into CI.
 
 ### JSON output
 
@@ -524,6 +531,7 @@ gowl lint -list -json | jq -r '.rules[].name'
 gowl sprawl -json | jq -r '.added[]'
 gowl plan -json design/change.ofn | jq -r '.findings[].message'
 gowl conform -json | jq -r '.designs[], .summary.failed'
+gowl invariants -json | jq -r '.findings[].message'
 ```
 
 Three properties make this safe to script against:
@@ -603,7 +611,10 @@ what the linter runs on here.
   hierarchy themselves.
 - Struct fields become object or data properties, with domains and ranges.
   An embedded field counts, under its type's name.
-- Packages become `:Package` individuals, linked by `:imports`.
+- Packages become `:Package` individuals, linked by `:imports` to the packages
+  they import. A package from outside the module, such as `fmt`, is an
+  `:ExternalPackage`.
+- An interface lists the methods it declares, with the annotation `:method`.
 
 ```bash
 go run ./examples/self > examples/self/gowl.ofn
@@ -615,15 +626,16 @@ info: orphan-class: class :el.Classification has no asserted superclass or equiv
 info: orphan-class: class :lint.Rule has no asserted superclass or equivalence
 info: orphan-class: class :owl.ClassBuilder has no asserted superclass or equivalence
 ...
-22 finding(s)
+29 finding(s)
 ```
 
 _(IRIs abbreviated here; the CLI prints them in full.)_
 
-None of these findings is a warning or an error. The 22 `orphan-class` notes
+None of these findings is a warning or an error. The 29 `orphan-class` notes
 are the types that satisfy no interface in the module: the builders, option
-structs, `owl.Index`, and the root interfaces `owl.Node` and `rdf.Term`. They
-are accurate, and at `info` they do not fail the default run.
+structs, `owl.Index`, the root interfaces `owl.Node` and `rdf.Term`, and the
+vocabulary classes such as `:ExternalPackage`. They are accurate, and at `info`
+they do not fail the default run.
 
 The first run did not look like this. The linter reported 102 `duplicate-axiom`
 warnings. They came from a bug in the generator: it called `o.Define(class)`
@@ -637,10 +649,10 @@ The other commands work on the same file:
 
 ```
 $ gowl stats examples/self/gowl.ofn
-classes             115
-object properties   128
-data properties     33
-individuals         22
+classes             122
+object properties   144
+data properties     41
+individuals         63
 
 $ gowl classify -explain ":owl.SubClassOf :owl.Node" examples/self/gowl.ofn
 :owl.SubClassOf ⊑ :owl.Node follows from:
@@ -672,6 +684,27 @@ are read from source. Everything they import is read from the export data that
 third-party modules alike, so its dependencies must already be in the module
 cache. Directories that hold their own `go.mod` are other modules and are
 skipped, as the go tool skips them.
+
+Besides its types, the description records each package's direct imports, and
+the methods of each interface:
+
+- A package the module imports from outside, standard library or dependency,
+  is an `:ExternalPackage` individual, such as `:package.net.http`. Only the
+  module's own imports are recorded, not what those packages import in turn.
+  Whether a package is the module's own is decided by the packages found under
+  its root, so a nested module counts as outside.
+- An interface lists each method it declares with the annotation `:method`, as
+  `Name(parameter types) result types`, for example
+  `AnnotationAssertion(:method :owl.Entity "Kind() owl.Kind")`. Parameter names
+  are left out, a type is qualified by its package's name as the classes are,
+  and `byte`, `rune` and `interface{}` are written `uint8`, `int32` and `any`.
+  An unexported method counts, because one such as `owl.Axiom`'s `isAxiom`
+  seals the interface: only its own package can implement it. An embedded
+  interface of the module is a `SubClassOf` instead, and an embedded one from
+  outside it, such as `io.Reader`, adds its methods.
+- Imports are read from the files that build on the machine running gocode, so
+  an import that only a file such as `x_windows.go` makes shows up on Windows
+  alone.
 
 One importer serves the standard library and the dependencies, so each package
 is loaded once. A cobra command's `context.Context` is therefore the same type
@@ -800,6 +833,15 @@ warning: same-shape-type: :store.Holding has the same fields as :store.Stock (:s
 1 finding(s)
 ```
 
+An interface's methods are its contract, and a plan that adds or changes one
+names it. Parameter names and spacing are the writer's own, and a bare type of
+the interface's package, such as `Item` in package `store`, means `store.Item`:
+
+```
+    Declaration(Class(:store.Priced))
+    AnnotationAssertion(:method :store.Priced "Price(item Item) (cents int, err error)")
+```
+
 `gowl conform` compares the code with the plan, both ways:
 
 | Rule | Severity | Reports |
@@ -814,6 +856,16 @@ warning: same-shape-type: :store.Holding has the same fields as :store.Stock (:s
 | `unplanned-package` | error | a package the change added that no plan names |
 | `unplanned-field` | warning | a field the change added or retyped that no plan names |
 | `unplanned-import` | warning | an import the change added that no plan names |
+| `missing-method` | error | a method the plan gives an interface that the code does not declare |
+| `method-mismatch` | error | a method the code declares with another signature than the plan's |
+| `unplanned-method` | error | a method the change added to an interface, or changed, that no plan names |
+| `malformed-method` | error | a method in a plan that is not a signature |
+
+A plan is about the module's own structure, so the change's imports from outside
+the module are not reported: what the module may depend on is a rule for the
+[invariants](#invariants-that-outlive-a-change). A plan that does name one, as
+`ObjectPropertyAssertion(:imports :package.gowl.store :package.strings)`, has it
+checked.
 
 Suppose the code leaves out `Amount` and adds a type nobody planned:
 
@@ -838,13 +890,14 @@ adds no exported structure, such as most bug fixes, passes with no plan at all.
 
 A plan can only say as much as `gocode` records:
 
-- **Structure only.** Methods, functions and behaviour are outside it, so a plan
-  does not replace tests.
+- **Structure only.** Interfaces' methods are in it; functions, the methods of
+  other types, and behaviour are not, so a plan does not replace tests.
 - **Exported types and some of their fields.** A field of a map, a function or a
   type from outside the module is not recorded, so a plan cannot name one and
   `conform` does not see one being added.
 - **Additions only.** A plan says what should exist, so removing something is not
-  reported.
+  reported. The invariants can fix an interface's methods so that removing one
+  is.
 - **Go only.** `gocode` reads Go modules.
 
 #### Holding an agent to the plan
@@ -868,6 +921,141 @@ They run only in Claude Code sessions, so to hold everyone to a plan, also run
 The gate sees only `Edit` and `Write`, and only types. Anything changed through a
 shell command, and any field, import or package, is caught at the end of the turn
 instead.
+
+### Invariants that outlive a change
+
+A plan is about one change, says only what should exist, and is retired once it
+is merged. Some decisions are not like that: the core does no I/O, `owl` imports
+nothing else in the module, a new package is put in a layer on purpose. Those go
+in `design/invariants.ofn`, which is never retired. `gowl invariants` checks the
+code against it, and `gowl plan` checks every plan against it, so a plan that
+would break a rule fails while it is still a few lines of a design.
+
+```
+Prefix(:=<https://example.com/shop#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+Ontology(<https://example.com/shop/design/invariants>
+    # Groups: facts the code cannot state.
+    ClassAssertion(:Core :package.example.com.shop.core)
+    ClassAssertion(:Core :package.example.com.shop.billing)
+    ClassAssertion(:Edge :package.example.com.shop.api)
+    ClassAssertion(:Effectful :package.os)
+    ClassAssertion(:Effectful :package.net.http)
+
+    # A derived property: imports, followed any distance.
+    SubObjectPropertyOf(:imports :dependsOn)
+    TransitiveObjectProperty(:dependsOn)
+
+    # Rules.
+    DisjointClasses(Annotation(rdfs:comment "The core does no I/O")
+        :Core ObjectSomeValuesFrom(:dependsOn :Effectful))
+    SubClassOf(Annotation(rdfs:comment "Every package is placed on purpose")
+        :Package ObjectUnionOf(:Core :Edge))
+
+    # A contract: these are the methods of core.Store, now and later.
+    AnnotationAssertion(:method :core.Store "Get(id int) (Thing, error)")
+)
+```
+
+When billing starts to use the api, the core reaches the network through it:
+
+```
+$ gowl invariants
+checked against design/invariants.ofn: 3 rule(s)
+
+error: invariant-violated: The core does no I/O: :package.example.com.shop.billing is :Core, and :package.example.com.shop.billing :dependsOn :package.net.http, which is :Effectful (through :package.example.com.shop.billing →:imports :package.example.com.shop.api →:imports :package.net.http)
+
+1 finding(s)
+```
+
+The rule comes first, in its own words, then the package that breaks it, and
+the imports to blame. That is a counterexample, the way a model checker gives
+one, and it is the shortest the facts allow.
+
+**How it reads the file.** A reasoner reads axioms open-world: that a package is
+not said to import `os` does not mean it does not. A description of code is
+different. It is complete for what it records, so the check is closed-world:
+what the code does not do, it does not do. Each axiom has one of four jobs:
+
+- **The code's facts** are which packages there are and what each imports. Only
+  the code says so: an assertion about `:Package`, `:ExternalPackage` or
+  `:imports` in the file is refused. To forbid an import, use
+  `NegativeObjectPropertyAssertion`.
+- **Groups** are `ClassAssertion`s with a class of the file's own, such as
+  `:Core`. `ClassAssertion(:ExternalPackage …)` declares a package the module
+  does not depend on yet, so that a rule can forbid it.
+- **Derived properties** come from `SubObjectPropertyOf` between named
+  properties and `TransitiveObjectProperty`. They may only define a property
+  the facts do not state, so a rule can define `:dependsOn` from `:imports`,
+  but cannot add an import.
+- **Rules** are `SubClassOf`, `DisjointClasses` and
+  `NegativeObjectPropertyAssertion`, over named classes, `owl:Thing`,
+  `owl:Nothing`, `ObjectIntersectionOf`, `ObjectUnionOf`, `ObjectComplementOf`,
+  `ObjectOneOf`, `ObjectSomeValuesFrom`, `ObjectAllValuesFrom` and
+  `ObjectHasValue`, with a property or its `ObjectInverseOf`.
+
+A `:method` annotation fixes an interface's methods: the code must have exactly
+those, so a method added, changed or removed is reported on every run, unlike
+in a plan.
+
+The subject of a `SubClassOf`, and each operand of a `DisjointClasses`, has to
+be bounded by the facts: a named class, `ObjectOneOf`, `ObjectHasValue`,
+`ObjectSomeValuesFrom`, or an intersection or union built from those.
+`owl:Thing`, `ObjectComplementOf` and `ObjectAllValuesFrom` are refused there,
+because who they include depends on which names happen to be mentioned, and a
+rule over them could change its answer when an unrelated package is named.
+
+| Rule | Severity | Reports |
+|---|---|---|
+| `invariant-violated` | error | a rule the code breaks, once for each package that breaks it |
+| `unsupported-invariant` | error | an axiom outside what the checker reads, with the reason; it is an error because a rule nobody checks reads as if it held |
+| `unknown-package` | error | a package that is no package of the module, the standard library, a dependency or a plan for the change, and is not declared an `:ExternalPackage`: usually a misspelling, which in a rule that forbids a package quietly forbids nothing |
+| `empty-term` | warning | a group or property the rules use that nothing defines, so they hold or fail for no package |
+| `missing-method`, `method-mismatch`, `unplanned-method` | error | a fixed interface whose methods differ from the file's |
+
+**What it can and cannot see.** It sees packages and their direct imports, and
+interfaces' methods. Imports are a proxy for effects, and a coarse one: `fmt`
+both formats strings and prints them. Packages from outside the module have no
+imports of their own in the facts, so `:dependsOn` follows the module's own
+packages and stops at the first package outside it.
+
+**The checker.** [`internal/icv`](internal/icv/icv.go) does the checking. It
+knows nothing about Go and does no I/O; [`CheckInvariants`](internal/gocode/invariants.go)
+gives it the facts and turns what it reports into findings. Its tests compare
+it, on 60 random finite models, with the semantics written out the slow,
+obvious way. They also check:
+
+- that a universal is a negated existential of the negation, and that De
+  Morgan holds;
+- that the derived transitive property is exactly what a search reaches, with
+  the shortest path as its proof;
+- that every path is a chain of asserted facts;
+- that naming an unrelated package changes no answer;
+- that the order the rules are written in changes nothing.
+
+As with the reasoner, the batch has to contain both broken and kept rules, so
+the comparison cannot pass vacuously.
+
+**gowl's own.** [`design/invariants.ofn`](design/invariants.ofn) holds the
+following rules:
+
+- every package is in the library, internal or the tools;
+- `owl` imports nothing else in the module;
+- the library never reaches into internal packages;
+- the library and the pure internal packages never reach `os`, the network,
+  `os/exec` or logging;
+- `internal/icv`, the checker, builds on `owl` and the standard library alone;
+- the methods of `owl.Node` and `owl.Entity`, and the seal of `owl.Axiom`, are
+  fixed.
+
+`TestOwnInvariantsHold` in [`examples/self`](examples/self/main_test.go) keeps
+them in `go test ./...`.
+
+[`.claude/hooks/invariants-check.sh`](.claude/hooks/invariants-check.sh) is a
+`Stop` hook. When a turn ends with changes to the Go code or to the invariants
+themselves, it runs `gowl invariants` and hands any finding back to the agent,
+once.
 
 ### Asking questions of Kubernetes' API types
 
@@ -1027,7 +1215,8 @@ Not yet:
   reasoning, no ABox reasoning, and no minimal justifications. See
   [Reasoning](#reasoning) for what it covers and what it reports as
   unsupported. Outside the reasoner, every query and lint rule still reports
-  only what is asserted.
+  only what is asserted. The closed-world checker behind `gowl invariants` is
+  internal, and covers a small fragment.
 - **Full DL profile validation.** See Profiles above for exactly what is covered.
 - **N-ary data ranges.** `DataSomeValuesFrom` takes a single data property.
 
@@ -1055,9 +1244,10 @@ Not yet:
 | `internal/rdf/` | Turtle and RDF/XML readers (generator only) |
 | `internal/rdfowl/` | mapping RDF triples onto the structural model |
 | `internal/vocabgen/` | writing a Go package for one vocabulary |
-| `internal/gocode/` | describing a Go module's code as an ontology (`gowl gocode`), comparing two versions of it (`gowl sprawl`), and comparing it with a plan (`gowl plan`, `gowl conform`) |
-| `design/` | the plans for changes in progress, and a record of past ones |
-| `.claude/hooks/` | Claude Code hooks: ontology checks on `.ofn` edits, a gate on exported types no plan names, and `gowl sprawl` and `gowl conform` before a turn ends |
+| `internal/gocode/` | describing a Go module's code as an ontology (`gowl gocode`), comparing two versions of it (`gowl sprawl`), comparing it with a plan (`gowl plan`, `gowl conform`), and checking it against its invariants (`gowl invariants`) |
+| `internal/icv/` | checking facts against OWL axioms under the closed-world assumption, with counterexamples |
+| `design/` | `invariants.ofn`, the rules the code keeps on every change; the plans for changes in progress; and a record of past ones |
+| `.claude/hooks/` | Claude Code hooks: ontology checks on `.ofn` edits, a gate on exported types no plan names, and `gowl sprawl`, `gowl conform` and `gowl invariants` before a turn ends |
 | `.claude/skills/` | Claude Code skills: adding an ontology term, and planning a Go change before writing it |
 | `el/normalize.go` | rewriting axioms into EL normal form |
 | `el/classify.go` | the completion rules and saturation |

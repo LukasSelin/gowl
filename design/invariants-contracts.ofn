@@ -1,0 +1,77 @@
+# The plan for living invariants and interface contracts, written before the code.
+#
+# A change plan can only say what should exist, and it stops being checked once
+# it is merged. This change adds a second kind of design file,
+# design/invariants.ofn, whose rules about the module's packages hold on every
+# change, and lets a plan name the methods an interface promises.
+#
+# The rules are checked by a small closed-world validator in its own package,
+# internal/icv. It knows nothing about Go and does no I/O: gocode supplies the
+# facts about the code and turns what icv reports into findings.
+
+Prefix(:=<https://github.com/LukasSelin/gowl/self#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
+
+Ontology(<https://github.com/LukasSelin/gowl/design/invariants-contracts>
+
+    # Existing types the new ones refer to.
+    Declaration(Class(:owl.Axiom))
+    Declaration(Class(:owl.Entity))
+    Declaration(Class(:owl.NamedIndividual))
+    Declaration(Class(:owl.ObjectPropertyAssertion))
+
+    Declaration(Class(:icv.Report))
+    AnnotationAssertion(rdfs:label :icv.Report "icv.Report")
+    AnnotationAssertion(rdfs:comment :icv.Report "What checking facts against constraints found: what was checked, what broke, what could not be checked, and which terms had nothing in them.")
+
+    Declaration(DataProperty(:icv.Report.Checked))
+    AnnotationAssertion(rdfs:label :icv.Report.Checked "icv.Report.Checked")
+    DataPropertyDomain(:icv.Report.Checked :icv.Report)
+    DataPropertyRange(:icv.Report.Checked xsd:integer)
+
+    Declaration(ObjectProperty(:icv.Report.Violations))
+    AnnotationAssertion(rdfs:label :icv.Report.Violations "icv.Report.Violations")
+    ObjectPropertyDomain(:icv.Report.Violations :icv.Report)
+    ObjectPropertyRange(:icv.Report.Violations :icv.Violation)
+
+    Declaration(ObjectProperty(:icv.Report.Unsupported))
+    AnnotationAssertion(rdfs:label :icv.Report.Unsupported "icv.Report.Unsupported")
+    ObjectPropertyDomain(:icv.Report.Unsupported :icv.Report)
+    ObjectPropertyRange(:icv.Report.Unsupported :icv.Violation)
+
+    Declaration(ObjectProperty(:icv.Report.Empty))
+    AnnotationAssertion(rdfs:label :icv.Report.Empty "icv.Report.Empty")
+    ObjectPropertyDomain(:icv.Report.Empty :icv.Report)
+    ObjectPropertyRange(:icv.Report.Empty :owl.Entity)
+
+    Declaration(Class(:icv.Violation))
+    AnnotationAssertion(rdfs:label :icv.Violation "icv.Violation")
+    AnnotationAssertion(rdfs:comment :icv.Violation "A constraint the facts break, the individual that breaks it, and the edges to blame.")
+
+    Declaration(ObjectProperty(:icv.Violation.Axiom))
+    AnnotationAssertion(rdfs:label :icv.Violation.Axiom "icv.Violation.Axiom")
+    ObjectPropertyDomain(:icv.Violation.Axiom :icv.Violation)
+    ObjectPropertyRange(:icv.Violation.Axiom :owl.Axiom)
+
+    Declaration(ObjectProperty(:icv.Violation.Subject))
+    AnnotationAssertion(rdfs:label :icv.Violation.Subject "icv.Violation.Subject")
+    ObjectPropertyDomain(:icv.Violation.Subject :icv.Violation)
+    ObjectPropertyRange(:icv.Violation.Subject :owl.NamedIndividual)
+
+    Declaration(ObjectProperty(:icv.Violation.Path))
+    AnnotationAssertion(rdfs:label :icv.Violation.Path "icv.Violation.Path")
+    ObjectPropertyDomain(:icv.Violation.Path :icv.Violation)
+    ObjectPropertyRange(:icv.Violation.Path :owl.ObjectPropertyAssertion)
+
+    Declaration(DataProperty(:icv.Violation.Reason))
+    AnnotationAssertion(rdfs:label :icv.Violation.Reason "icv.Violation.Reason")
+    DataPropertyDomain(:icv.Violation.Reason :icv.Violation)
+    DataPropertyRange(:icv.Violation.Reason xsd:string)
+
+    # The new package, and where it sits.
+    Declaration(NamedIndividual(:package.gowl.internal.icv))
+    ClassAssertion(:Package :package.gowl.internal.icv)
+    ObjectPropertyAssertion(:imports :package.gowl.internal.icv :package.gowl.owl)
+    ObjectPropertyAssertion(:imports :package.gowl.internal.gocode :package.gowl.internal.icv)
+)

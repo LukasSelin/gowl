@@ -48,3 +48,37 @@ func TestSelfLintsClean(t *testing.T) {
 		}
 	}
 }
+
+// gowl keeps the rules in design/invariants.ofn on every change: its layers,
+// effects at the edges, and the methods of the interfaces everything is written
+// against. The repository has no CI, so this test is what keeps the rules alive
+// outside a Claude Code session, where the invariants-check hook runs them.
+func TestOwnInvariantsHold(t *testing.T) {
+	o, err := gocode.Build("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	src, err := os.ReadFile("../../design/invariants.ofn")
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv, err := owl.ParseFunctionalString(string(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := gocode.KnownPackages("../..")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var known []owl.NamedIndividual
+	for _, p := range paths {
+		known = append(known, gocode.PackageIndividual(o, p))
+	}
+	c := gocode.CheckInvariants(inv, o, known)
+	for _, f := range c.Findings {
+		t.Errorf("%s: %s: %s", f.Severity, f.Rule, f.Message)
+	}
+	if c.Checked == 0 {
+		t.Error("no rule was checked")
+	}
+}

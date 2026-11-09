@@ -419,10 +419,39 @@ type sprawlDoc struct {
 }
 
 // planDoc is what gowl plan writes: what gowl sprawl would say about the plan
-// if it were already code, and which plan that was.
+// if it were already code, and which plan that was. Invariants names the file
+// the plan was also checked against, or is empty when the module has none;
+// InvariantsChecked counts its rules.
 type planDoc struct {
-	Design string `json:"design"`
+	Design            string `json:"design"`
+	Invariants        string `json:"invariants"`
+	InvariantsChecked int    `json:"invariants_checked"`
 	sprawlDoc
+}
+
+// invariantsDoc is what gowl invariants writes. Invariants is empty when the
+// module has none.
+type invariantsDoc struct {
+	Dir        string       `json:"dir"`
+	Invariants string       `json:"invariants"`
+	Checked    int          `json:"checked"`
+	Findings   []findingDoc `json:"findings"`
+	// AlreadyReported counts the findings -seen left out. The summary covers
+	// only the findings reported.
+	AlreadyReported int         `json:"already_reported"`
+	Summary         lintSummary `json:"summary"`
+}
+
+func invariantsJSON(dir, path string, o *owl.Ontology, c gocode.Conformance, findings []lint.Finding, already int, threshold lint.Severity) invariantsDoc {
+	l := lintJSON(dir, o, findings, threshold)
+	return invariantsDoc{
+		Dir:             dir,
+		Invariants:      path,
+		Checked:         c.Checked,
+		Findings:        l.Findings,
+		AlreadyReported: already,
+		Summary:         l.Summary,
+	}
 }
 
 // conformDoc is what gowl conform writes.
