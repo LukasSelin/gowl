@@ -132,9 +132,10 @@ The invariants are about types and what the code offers as well as about
 packages, and the plan is read as though it were built, with what it says and no
 more:
 
-- A plan that adds a package also places it: add a `ClassAssertion` putting the
-  new package in one of the groups in `design/invariants.ofn`, or the plan check
-  reports it as unplaced.
+- A change that adds a package places it first, in `design/invariants.ofn` and
+  not in the plan: a `ClassAssertion` there puts the new package in one of the
+  file's groups, or the plan check reports it as unplaced. A group assertion in
+  a plan is checked by nothing.
 - A rule about types sees a planned type through the plan. Give it an
   `rdfs:comment` saying what it is for, and its `:kind` and `:definedIn`, and
   the rules about documentation, kinds and where types live are checked now
@@ -142,6 +143,21 @@ more:
 - `unplanned-func` or `unplanned-method` from the invariants means the plan adds
   to something they fix: an interface whose methods they name, or a package or
   type in `:Fixed`. Adding to it is a change to `design/invariants.ofn` first.
+
+In this repository the invariants fix every package and close every group of
+packages, so that last step is part of any change to what a package exports.
+Before the plan, in `design/invariants.ofn`:
+
+- for an exported function that is added, renamed, removed or given another
+  signature, add or change its `:func` line under the package;
+- for a new package, declare it, put it in `:Library`, `:Internal` or `:Tool`
+  and in `:Fixed`, add it to the rule that closes that group, and list its
+  functions.
+
+Then tell the user what you changed there and why. Until the code is written,
+`gowl invariants` reports the new line as `missing-func`, or the new package as
+`missing-package`. That is the file being ahead of the code, and it goes when
+the code catches up.
 
 `go run ./cmd/gowl invariants -facts` prints the facts the rules are checked
 against, which is the thing to read when a rule does not say what you expected.
@@ -185,9 +201,10 @@ there are any. A `missing-func` or `missing-method` is something the invariants
 say the code keeps offering, and it no longer does. It also runs when you end a
 turn.
 
-**When the change adds something the code should keep**, such as a function
+**When the change adds something the code should keep**, such as a method
 other packages will be written against, say so in `design/invariants.ofn` with a
-`:func` or `:method` of its own, and tell the user. A plan stops being checked
+`:method` of its own, and tell the user. A function is there already: in this
+repository its `:func` line came before the plan. A plan stops being checked
 once it is merged; the invariants do not. Only methods and functions are
 annotations there. What kind a type is, where it lives and what it embeds are
 facts, and holding a type to one is a rule, such as

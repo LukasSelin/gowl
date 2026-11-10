@@ -1224,6 +1224,8 @@ About shape:
 - every package has a package comment, and every exported type a doc comment;
 - the library is `owl`, `el`, `lint`, `vocab` and the generated vocabularies,
   so a fifth hand-written package is decided in the file first;
+- the internal packages are the five there are, and the tools the two commands
+  and the two examples, so another of either is decided in the file first too;
 - a generated vocabulary builds on `owl` and the standard library alone, and
   defines no types of its own;
 - `internal/icv` exports two types, its report and the violations in it.
@@ -1232,22 +1234,29 @@ About what the code offers:
 
 - the methods of `owl.Node` and `owl.Entity`, and the seal of `owl.Axiom`, are
   fixed, and of the module's interfaces they embed `owl.Node` and no other;
-- `owl` keeps the functions that make, read, write, walk and compare an
-  ontology, such as `New`, `ParseFunctional`, `Equal` and `DiffOntologies`, and
-  `owl.Ontology` keeps `Add`, `All`, `Signature`, `Functional`,
-  `WriteFunctional` and `Err`;
-- `el` keeps `Classify`, and `el.Classification` its queries; `lint` keeps
-  `Default` and `Run`; `vocab` keeps `All` and `ByPrefix`;
-- every generated vocabulary offers `Ontology()` and `Vocabulary()`, and being
-  `:Fixed`, nothing else;
-- `internal/icv` offers `Validate`, and being `:Fixed`, nothing else.
+- every package is `:Fixed`, and the file lists every function the module
+  exports. So an exported function is added, renamed, given another signature
+  or taken away in the file first, whether it is in the library, in an internal
+  package or in a tool;
+- every generated vocabulary offers `Ontology()` and `Vocabulary()`, the
+  checker offers `Validate`, and the two commands and `examples/self` export no
+  function at all;
+- `owl.Ontology` keeps `Add`, `All`, `Signature`, `Functional`,
+  `WriteFunctional` and `Err`, and `el.Classification` keeps its queries. A
+  type may have more methods than the file lists.
 
 ```
 $ gowl invariants
-checked against design/invariants.ofn: 69 rule(s)
+checked against design/invariants.ofn: 138 rule(s)
 
 no findings
 ```
+
+Fixing every package has a price, which is the point of it. A change that adds
+an exported function writes its `:func` line in the file before the plan, or
+`gowl plan` reports `unplanned-func`. Until the code is written `gowl invariants`
+reports that line as `missing-func`: the file is ahead of the code, and the
+finding goes when the code catches up.
 
 `TestOwnInvariantsHold` in [`examples/self`](examples/self/main_test.go) keeps
 them in `go test ./...`.

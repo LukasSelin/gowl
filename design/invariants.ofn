@@ -15,7 +15,9 @@
 # The file has three parts after the groups. The rules about layers say what
 # may import what. The rules about shape say how the code looks, whatever it
 # does. The contracts and capabilities say what it offers, by signature: a
-# :method on a type, a :func on a package or on a group of them.
+# :method on a type, a :func on a package or on a group of them. Every package
+# is :Fixed, so the functions listed are all the module exports: adding one,
+# renaming one or taking one away starts here.
 # "gowl invariants -facts" prints the facts all of it is checked against.
 
 Prefix(:=<https://github.com/LukasSelin/gowl/self#>)
@@ -48,7 +50,7 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     Declaration(Class(:Vocabulary))
     AnnotationAssertion(rdfs:comment :Vocabulary "The library packages cmd/vocabgen generates, one for each standard vocabulary.")
     Declaration(Class(:Fixed))
-    AnnotationAssertion(rdfs:comment :Fixed "Packages that offer exactly the functions this file gives them, so that one more is decided here first.")
+    AnnotationAssertion(rdfs:comment :Fixed "Packages that offer exactly the functions this file gives them, so that one more, or one fewer, is decided here first. Every package of the module is one.")
 
     Declaration(ObjectProperty(:dependsOn))
     AnnotationAssertion(rdfs:comment :dependsOn "Imports, followed any distance.")
@@ -100,6 +102,11 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     ClassAssertion(:Vocabulary :package.gowl.vocab.skos)
     ClassAssertion(:Vocabulary :package.gowl.vocab.skosxl)
     ClassAssertion(:Vocabulary :package.gowl.vocab.time)
+
+    ClassAssertion(:Fixed :package.gowl.owl)
+    ClassAssertion(:Fixed :package.gowl.el)
+    ClassAssertion(:Fixed :package.gowl.lint)
+    ClassAssertion(:Fixed :package.gowl.vocab)
     ClassAssertion(:Fixed :package.gowl.vocab.dc)
     ClassAssertion(:Fixed :package.gowl.vocab.dcat)
     ClassAssertion(:Fixed :package.gowl.vocab.dcterms)
@@ -127,7 +134,11 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     ClassAssertion(:Pure :package.gowl.internal.rdf)
     ClassAssertion(:Pure :package.gowl.internal.rdfowl)
     ClassAssertion(:Pure :package.gowl.internal.vocabgen)
+    ClassAssertion(:Fixed :package.gowl.internal.gocode)
     ClassAssertion(:Fixed :package.gowl.internal.icv)
+    ClassAssertion(:Fixed :package.gowl.internal.rdf)
+    ClassAssertion(:Fixed :package.gowl.internal.rdfowl)
+    ClassAssertion(:Fixed :package.gowl.internal.vocabgen)
 
     # The types the rules below name. A rule is about things, so a type is named
     # here as an individual, under the name gocode gives its class.
@@ -145,6 +156,10 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     ClassAssertion(:Tool :package.gowl.cmd.vocabgen)
     ClassAssertion(:Tool :package.gowl.examples.k8s)
     ClassAssertion(:Tool :package.gowl.examples.self)
+    ClassAssertion(:Fixed :package.gowl.cmd.gowl)
+    ClassAssertion(:Fixed :package.gowl.cmd.vocabgen)
+    ClassAssertion(:Fixed :package.gowl.examples.k8s)
+    ClassAssertion(:Fixed :package.gowl.examples.self)
 
     Declaration(NamedIndividual(:package.os))
     Declaration(NamedIndividual(:package.os.exec))
@@ -191,6 +206,12 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     SubClassOf(Annotation(rdfs:comment "The library is four packages written by hand and the generated vocabularies, so a fifth is decided here before it is written")
         :Library ObjectUnionOf(:Vocabulary ObjectOneOf(:package.gowl.owl :package.gowl.el :package.gowl.lint :package.gowl.vocab)))
 
+    SubClassOf(Annotation(rdfs:comment "The internal packages are these five, so a sixth is decided here before it is written")
+        :Internal ObjectOneOf(:package.gowl.internal.gocode :package.gowl.internal.icv :package.gowl.internal.rdf :package.gowl.internal.rdfowl :package.gowl.internal.vocabgen))
+
+    SubClassOf(Annotation(rdfs:comment "The tools are two commands and two examples, so another is decided here before it is written")
+        :Tool ObjectOneOf(:package.gowl.cmd.gowl :package.gowl.cmd.vocabgen :package.gowl.examples.k8s :package.gowl.examples.self))
+
     SubClassOf(Annotation(rdfs:comment "A generated vocabulary is part of the library")
         :Vocabulary :Library)
 
@@ -199,9 +220,6 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
 
     DisjointClasses(Annotation(rdfs:comment "A generated vocabulary holds terms, not types of its own")
         :Vocabulary ObjectSomeValuesFrom(ObjectInverseOf(:definedIn) :Type))
-
-    SubClassOf(Annotation(rdfs:comment "The generated vocabularies all look alike: each offers what this file gives the group, and nothing else")
-        :Vocabulary :Fixed)
 
     SubClassOf(Annotation(rdfs:comment "The invariant checker stays as small in what it exports as in what it imports: its report, and the violations in it")
         ObjectHasValue(:definedIn :package.gowl.internal.icv) ObjectOneOf(:icv.Report :icv.Violation))
@@ -219,23 +237,35 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     SubClassOf(Annotation(rdfs:comment "A contract does not grow by embedding either: of the module's interfaces, these embed owl.Node and no other")
         ObjectOneOf(:owl.Node :owl.Entity :owl.Axiom) ObjectAllValuesFrom(:implements ObjectOneOf(:owl.Node)))
 
-    # Capabilities. What a program using gowl can count on: the code has each of
-    # these, with this signature, and may offer more beside it. Taking one away,
-    # or changing it, starts here.
+    # Capabilities. What the code offers, by signature. Every package is :Fixed,
+    # so the functions below are all the module exports: adding one, renaming
+    # one or taking one away starts here. A method below is one its type keeps,
+    # and the type may have more beside it. Only the interfaces under Contracts
+    # have exactly the methods they are given.
+
+    SubClassOf(Annotation(rdfs:comment "Every package offers exactly the functions this file gives it, so that one more, or one fewer, is decided here first")
+        :Package :Fixed)
 
     # The model: making an ontology, reading and writing one, walking and
     # comparing what is in it.
     AnnotationAssertion(:func :package.gowl.owl "New(iri IRI) *Ontology")
+    AnnotationAssertion(:func :package.gowl.owl "NewPrefixes() *Prefixes")
     AnnotationAssertion(:func :package.gowl.owl "ParseFunctional(r io.Reader) (*Ontology, error)")
     AnnotationAssertion(:func :package.gowl.owl "ParseFunctionalString(src string) (*Ontology, error)")
+    AnnotationAssertion(:func :package.gowl.owl "ParseAxiom(src string, prefixes *Prefixes) (Axiom, error)")
+    AnnotationAssertion(:func :package.gowl.owl "ParseClassExpression(src string, prefixes *Prefixes) (ClassExpression, error)")
     AnnotationAssertion(:func :package.gowl.owl "Functional(n Node) string")
     AnnotationAssertion(:func :package.gowl.owl "Equal(a, b Node) bool")
     AnnotationAssertion(:func :package.gowl.owl "Walk(n Node, yield func(Entity))")
     AnnotationAssertion(:func :package.gowl.owl "Signature(n Node) []Entity")
+    AnnotationAssertion(:func :package.gowl.owl "References(n Node, e Entity) bool")
+    AnnotationAssertion(:func :package.gowl.owl "IsBuiltin(e Entity) bool")
+    AnnotationAssertion(:func :package.gowl.owl "Unwrap(ax Axiom) Axiom")
     AnnotationAssertion(:func :package.gowl.owl "CanonicalAxiom(ax Axiom) Axiom")
+    AnnotationAssertion(:func :package.gowl.owl "CanonicalClassExpression(ce ClassExpression) ClassExpression")
+    AnnotationAssertion(:func :package.gowl.owl "CanonicalKey(ax Axiom) string")
+    AnnotationAssertion(:func :package.gowl.owl "SortAxioms(axioms []Axiom)")
     AnnotationAssertion(:func :package.gowl.owl "DiffOntologies(from, to *Ontology) *Diff")
-    AnnotationAssertion(:func :package.gowl.owl "CheckProfile(o *Ontology, p Profile) []Violation")
-    AnnotationAssertion(:func :package.gowl.owl "NewVocabulary(o *Ontology, opts ...VocabularyOption) *Vocabulary")
     AnnotationAssertion(:method :owl.Ontology "Add(axioms ...Axiom) *Ontology")
     AnnotationAssertion(:method :owl.Ontology "All() iter.Seq[Axiom]")
     AnnotationAssertion(:method :owl.Ontology "Signature() []Entity")
@@ -243,23 +273,106 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     AnnotationAssertion(:method :owl.Ontology "WriteFunctional(w io.Writer) error")
     AnnotationAssertion(:method :owl.Ontology "Err() error")
 
+    # Asking about an ontology: an index over its axioms, the object properties
+    # that are not simple, the profiles it is in, and the terms it defines.
+    AnnotationAssertion(:func :package.gowl.owl "NewIndex(o *Ontology) *Index")
+    AnnotationAssertion(:func :package.gowl.owl "NonSimpleProperties(o *Ontology) map[ObjectProperty]bool")
+    AnnotationAssertion(:func :package.gowl.owl "Profiles(o *Ontology) []Profile")
+    AnnotationAssertion(:func :package.gowl.owl "CheckProfile(o *Ontology, p Profile) []Violation")
+    AnnotationAssertion(:func :package.gowl.owl "NewVocabulary(o *Ontology, opts ...VocabularyOption) *Vocabulary")
+    AnnotationAssertion(:func :package.gowl.owl "DeclaredOnly() VocabularyOption")
+    AnnotationAssertion(:func :package.gowl.owl "OnlyKinds(kinds ...Kind) VocabularyOption")
+    AnnotationAssertion(:func :package.gowl.owl "WithBuiltins() VocabularyOption")
+
+    # Shorthand for writing class expressions and data ranges in Go.
+    AnnotationAssertion(:func :package.gowl.owl "And(operands ...ClassExpression) ObjectIntersectionOf")
+    AnnotationAssertion(:func :package.gowl.owl "Or(operands ...ClassExpression) ObjectUnionOf")
+    AnnotationAssertion(:func :package.gowl.owl "Not(operand ClassExpression) ObjectComplementOf")
+    AnnotationAssertion(:func :package.gowl.owl "OneOf(individuals ...Individual) ObjectOneOf")
+    AnnotationAssertion(:func :package.gowl.owl "Some(p ObjectPropertyExpression, filler ClassExpression) ObjectSomeValuesFrom")
+    AnnotationAssertion(:func :package.gowl.owl "Only(p ObjectPropertyExpression, filler ClassExpression) ObjectAllValuesFrom")
+    AnnotationAssertion(:func :package.gowl.owl "HasValue(p ObjectPropertyExpression, v Individual) ObjectHasValue")
+    AnnotationAssertion(:func :package.gowl.owl "Self(p ObjectPropertyExpression) ObjectHasSelf")
+    AnnotationAssertion(:func :package.gowl.owl "Min(n int, p ObjectPropertyExpression, filler ...ClassExpression) ObjectMinCardinality")
+    AnnotationAssertion(:func :package.gowl.owl "Max(n int, p ObjectPropertyExpression, filler ...ClassExpression) ObjectMaxCardinality")
+    AnnotationAssertion(:func :package.gowl.owl "Exactly(n int, p ObjectPropertyExpression, filler ...ClassExpression) ObjectExactCardinality")
+    AnnotationAssertion(:func :package.gowl.owl "Inverse(p ObjectProperty) ObjectInverseOf")
+    AnnotationAssertion(:func :package.gowl.owl "DataSome(p DataPropertyExpression, r DataRange) DataSomeValuesFrom")
+    AnnotationAssertion(:func :package.gowl.owl "DataOnly(p DataPropertyExpression, r DataRange) DataAllValuesFrom")
+    AnnotationAssertion(:func :package.gowl.owl "DataValue(p DataPropertyExpression, v Literal) DataHasValue")
+    AnnotationAssertion(:func :package.gowl.owl "Restrict(dt Datatype, facets ...FacetRestriction) DatatypeRestriction")
+    AnnotationAssertion(:func :package.gowl.owl "Facet(facet IRI, value Literal) FacetRestriction")
+
+    # Shorthand for literals.
+    AnnotationAssertion(:func :package.gowl.owl "Str(s string) Literal")
+    AnnotationAssertion(:func :package.gowl.owl "LangStr(s, lang string) Literal")
+    AnnotationAssertion(:func :package.gowl.owl "Int(n int) Literal")
+    AnnotationAssertion(:func :package.gowl.owl "Float(f float64) Literal")
+    AnnotationAssertion(:func :package.gowl.owl "Bool(b bool) Literal")
+    AnnotationAssertion(:func :package.gowl.owl "Time(t time.Time) Literal")
+    AnnotationAssertion(:func :package.gowl.owl "Typed(value string, dt Datatype) Literal")
+
     # The reasoner: classifying an ontology, and asking what follows and why.
     AnnotationAssertion(:func :package.gowl.el "Classify(o *owl.Ontology, opts ...Option) *Classification")
+    AnnotationAssertion(:func :package.gowl.el "WithoutExplanations() Option")
     AnnotationAssertion(:method :el.Classification "IsSubsumedBy(sub, super owl.Class) bool")
     AnnotationAssertion(:method :el.Classification "UnsatisfiableClasses() []owl.Class")
     AnnotationAssertion(:method :el.Classification "Explain(sub, super owl.Class) []owl.Axiom")
     AnnotationAssertion(:method :el.Classification "Unsupported() []owl.Axiom")
 
-    # The linter: its rules, and running them.
+    # The linter: its rules, choosing among them and running them, and how
+    # severe what they find is.
     AnnotationAssertion(:func :package.gowl.lint "Default() []Rule")
+    AnnotationAssertion(:func :package.gowl.lint "PreferStandardTerms(refs ...*owl.Vocabulary) Rule")
+    AnnotationAssertion(:func :package.gowl.lint "Select(rules []Rule, disabled []string) ([]Rule, []string)")
     AnnotationAssertion(:func :package.gowl.lint "Run(o *owl.Ontology, rules []Rule) []Finding")
+    AnnotationAssertion(:func :package.gowl.lint "MaxSeverity(findings []Finding) (Severity, bool)")
+    AnnotationAssertion(:func :package.gowl.lint "ParseSeverity(s string) (Severity, error)")
 
-    # The standard vocabularies: finding one, and what each of them offers.
+    # The standard vocabularies: finding one, putting several together, and
+    # what each of them offers.
     AnnotationAssertion(:func :package.gowl.vocab "All() []Entry")
     AnnotationAssertion(:func :package.gowl.vocab "ByPrefix(prefix string) (Entry, bool)")
+    AnnotationAssertion(:func :package.gowl.vocab "Owner(iri owl.IRI) (Entry, bool)")
+    AnnotationAssertion(:func :package.gowl.vocab "Prefixes() *owl.Prefixes")
+    AnnotationAssertion(:func :package.gowl.vocab "Merge(iri owl.IRI, vocabularies ...Entry) *owl.Ontology")
     AnnotationAssertion(:func :Vocabulary "Ontology() *owl.Ontology")
     AnnotationAssertion(:func :Vocabulary "Vocabulary() *owl.Vocabulary")
 
-    # The checker: one function, and being :Fixed, no other.
+    # Inside the module. No program outside gowl can import these, and what
+    # each offers the rest of it is decided here all the same.
+
+    # gocode: describing a module, and holding the code to a plan and to this
+    # file.
+    AnnotationAssertion(:func :package.gowl.internal.gocode "Build(root string) (*owl.Ontology, error)")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "KnownPackages(root string) ([]string, error)")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "Namespace(module *owl.Ontology) owl.IRI")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "PackageIndividual(module *owl.Ontology, path string) owl.NamedIndividual")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "Overlay(base *owl.Ontology, plans ...*owl.Ontology) *owl.Ontology")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "Compare(before, after *owl.Ontology) Delta")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "ReviewPlan(plan, before *owl.Ontology) Delta")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "Conform(plan, before, after *owl.Ontology) Conformance")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "CheckInvariants(invariants, module *owl.Ontology, known []owl.NamedIndividual) Conformance")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "ReviewInvariants(invariants, plan, before *owl.Ontology, known []owl.NamedIndividual) Conformance")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "Facts(invariants, module *owl.Ontology, known []owl.NamedIndividual) *owl.Ontology")
+    AnnotationAssertion(:func :package.gowl.internal.gocode "SortFindings(fs []lint.Finding) []lint.Finding")
+
+    # The checker: one function.
     AnnotationAssertion(:func :package.gowl.internal.icv "Validate(data, constraints *owl.Ontology) Report")
+
+    # rdf and rdfowl: reading RDF, and turning a graph into an ontology.
+    AnnotationAssertion(:func :package.gowl.internal.rdf "NewGraph(triples []Triple, prefixes map[string]IRI) *Graph")
+    AnnotationAssertion(:func :package.gowl.internal.rdf "ParseTurtle(r io.Reader, base string) (*Graph, error)")
+    AnnotationAssertion(:func :package.gowl.internal.rdf "ParseXML(r io.Reader, base string) (*Graph, error)")
+    AnnotationAssertion(:func :package.gowl.internal.rdfowl "Convert(g *rdf.Graph, opts Options) (*Result, error)")
+
+    # vocabgen: writing a vocabulary package.
+    AnnotationAssertion(:func :package.gowl.internal.vocabgen "Generate(p Package) (*Files, error)")
+
+    # The tools. The two commands and examples/self export nothing, and being
+    # :Fixed, keep it so. examples/k8s exports three: building its result, and
+    # reading and printing the answers in it.
+    AnnotationAssertion(:func :package.gowl.examples.k8s "Build(roots []string, questions string) (*Result, error)")
+    AnnotationAssertion(:func :package.gowl.examples.k8s "Answers(r *Result) ([]owl.Class, []Answer)")
+    AnnotationAssertion(:func :package.gowl.examples.k8s "PrintAnswers(w io.Writer, r *Result)")
 )
