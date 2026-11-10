@@ -49,10 +49,12 @@ func TestSelfLintsClean(t *testing.T) {
 	}
 }
 
-// gowl keeps the rules in design/invariants.ofn on every change: its layers,
-// effects at the edges, and the methods of the interfaces everything is written
-// against. The repository has no CI, so this test is what keeps the rules alive
-// outside a Claude Code session, where the invariants-check hook runs them.
+// gowl keeps the rules in design/invariants.ofn on every change: its layers
+// and effects at the edges, how its packages and types look, the methods of the
+// interfaces everything is written against, and the functions and methods the
+// library keeps offering. The repository has no CI, so this test is what keeps
+// the rules alive outside a Claude Code session, where the invariants-check
+// hook runs them.
 func TestOwnInvariantsHold(t *testing.T) {
 	o, err := gocode.Build("../..")
 	if err != nil {

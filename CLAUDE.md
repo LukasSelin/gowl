@@ -2,16 +2,19 @@
 
 ## Plan Go changes before writing them
 
-Before adding or reshaping exported Go types, struct fields, interfaces, packages
-or imports between packages, write the plan as an ontology in
-`design/<change>.ofn`, check it with `gowl plan`, and then implement to it. The
-`design-first` skill has the steps. A change that adds no exported structure,
-such as most bug fixes, needs no plan.
+Before adding or reshaping exported Go types, struct fields, interfaces, exported
+functions and methods, packages or imports between packages, write the plan as
+an ontology in `design/<change>.ofn`, check it with `gowl plan`, and then
+implement to it. The `design-first` skill has the steps. A change that adds
+nothing exported, such as most bug fixes, needs no plan.
 
 `design/invariants.ofn` is different: it holds the rules the code keeps on every
-change (layers, which packages may do I/O, interfaces whose methods are fixed),
-and it is never retired. `gowl plan` checks each plan against it. A new package
-has to be placed in one of its groups.
+change, and it is never retired. They say what may import what (layers, which
+packages may do I/O), how the code looks (every exported type documented, what a
+generated vocabulary may hold), and what it offers (the functions and methods
+the library keeps, and the packages and interfaces whose surface is fixed).
+`gowl plan` checks each plan against it. A new package has to be placed in one
+of its groups, and a planned type needs an `rdfs:comment` saying what it is for.
 
 Hooks hold this in place:
 

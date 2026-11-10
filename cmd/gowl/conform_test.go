@@ -231,6 +231,33 @@ func TestConformJSON(t *testing.T) {
 	}
 }
 
+// A function the change adds is the package's to offer and the plan's to
+// name. Unplanned, it is a warning: below what fails a run by default, and what
+// the hook asks about.
+func TestConformReportsAnUnplannedFunction(t *testing.T) {
+	dir := storeRepo(t)
+	putPlan(t, dir, "holdings.ofn", holdingsPlan)
+	if err := os.WriteFile(filepath.Join(dir, "count.go"), []byte("package store\n\n// Count counts a stock.\nfunc Count(s *Stock) int { return s.Count }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, code := capture(t, func() int { return run([]string{"conform", dir}) })
+	want := "warning: unplanned-func: :package.example.com.store now offers the function Count(*store.Stock) int, and no plan names it"
+	if code != exitOK || !strings.Contains(out, want) {
+		t.Errorf("exit = %d, want 0 and %q\n%s", code, want, out)
+	}
+	if out, code := capture(t, func() int { return run([]string{"conform", "-fail-on", "warning", dir}) }); code != exitFailed {
+		t.Errorf("exit = %d, want 1 at -fail-on warning\n%s", code, out)
+	}
+
+	putPlan(t, dir, "holdings.ofn", strings.Replace(holdingsPlan, "    Declaration(Class(:store.Memo))",
+		"    AnnotationAssertion(:func :package.example.com.store \"Count(s *Stock) int\")\n    Declaration(Class(:store.Memo))", 1))
+	out, code = capture(t, func() int { return run([]string{"conform", "-fail-on", "warning", dir}) })
+	if code != exitOK || !strings.Contains(out, "7 planned item(s) checked") {
+		t.Errorf("exit = %d, want 0 with the function among the 7 items checked\n%s", code, out)
+	}
+}
+
 func TestConformJSONListsAreNeverNull(t *testing.T) {
 	dir := storeRepo(t)
 	putPlan(t, dir, "holdings.ofn", holdingsPlan)

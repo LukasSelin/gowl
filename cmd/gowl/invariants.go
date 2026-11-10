@@ -42,9 +42,10 @@ func loadInvariants(root, named string, module *owl.Ontology) (*owl.Ontology, st
 	return inv, path, nil
 }
 
-// knownPackages lists the packages from outside the code that invariants may
-// name: the standard library, the module's dependencies, and every package the
-// given plans name, which may not be written yet.
+// knownPackages lists the names from outside the code that invariants may
+// use: the packages of the standard library and of the module's dependencies,
+// and every package and type the given plans name, which may not be written
+// yet.
 func knownPackages(root string, module *owl.Ontology, plans ...*owl.Ontology) ([]owl.NamedIndividual, error) {
 	paths, err := gocode.KnownPackages(root)
 	if err != nil {
@@ -56,6 +57,10 @@ func knownPackages(root string, module *owl.Ontology, plans ...*owl.Ontology) ([
 	}
 	for _, plan := range plans {
 		out = append(out, plan.Individuals()...)
+		// A rule names a type as an individual, and a plan as a class.
+		for _, c := range plan.Classes() {
+			out = append(out, owl.NamedIndividual(c.IRI()))
+		}
 	}
 	return out, nil
 }
@@ -67,6 +72,7 @@ func cmdInvariants(args []string) int {
 	file := fs.String("file", "", "the invariants to check (default: design/invariants.ofn)")
 	failOn := fs.String("fail-on", "error", "lowest severity that fails the run: info, warning or error")
 	seen := fs.String("seen", "", "leave out findings already listed in this file, and add the reported ones to it")
+	facts := fs.Bool("facts", false, "print the facts the rules are checked against, as an ontology, and check nothing")
 	jsonOut := fs.Bool("json", false, "write one JSON object to stdout instead of text")
 	dirs, err := parseArgs(fs, args)
 	if err != nil {
@@ -74,6 +80,10 @@ func cmdInvariants(args []string) int {
 	}
 	if len(dirs) > 1 {
 		fmt.Fprintln(os.Stderr, "gowl invariants: need at most one module directory")
+		return exitProblem
+	}
+	if *facts && *jsonOut {
+		fmt.Fprintln(os.Stderr, "gowl invariants: -facts prints an ontology, so it takes no -json")
 		return exitProblem
 	}
 	root := "."
@@ -92,6 +102,12 @@ func cmdInvariants(args []string) int {
 	inv, path, err := loadInvariants(root, *file, module)
 	if err != nil {
 		return failWith(*jsonOut, err)
+	}
+	if inv == nil && *facts {
+		// The code's facts are there to read with no invariants at all, which
+		// is when a person is about to write the first rule.
+		inv = owl.New("")
+		inv.Prefixes = module.Prefixes
 	}
 	if inv == nil {
 		if *jsonOut {
@@ -117,6 +133,10 @@ func cmdInvariants(args []string) int {
 	known, err := knownPackages(root, module, plans...)
 	if err != nil {
 		return failWith(*jsonOut, err)
+	}
+	if *facts {
+		fmt.Print(gocode.Facts(inv, module, known).Functional())
+		return exitOK
 	}
 
 	c := gocode.CheckInvariants(inv, module, known)

@@ -53,7 +53,14 @@ func Compare(before, after *owl.Ontology) Delta {
 		existed[c] = true
 	}
 
-	classes := after.Classes()
+	// Only the classes that stand for types: a plan read as code may declare
+	// others, and those are no types the change adds.
+	var classes []owl.Class
+	for _, c := range after.Classes() {
+		if isTypeName(c, Namespace(after)) {
+			classes = append(classes, c)
+		}
+	}
 	var d Delta
 	for _, c := range classes {
 		switch {

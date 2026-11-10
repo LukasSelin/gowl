@@ -1,0 +1,41 @@
+# The plan for capabilities and shape rules, written before the code.
+#
+# Until now the description of a module stopped at its types. A plan could not
+# name a function, or a method of anything but an interface, and the invariants
+# could only make rules about packages and what they import. This change lets a
+# design say what the code offers and how it looks:
+#
+#   - gocode records every function a package exports (:func), the exported
+#     methods of every type and not only an interface's (:method), each type's
+#     kind (:kind), and the name each package declares (:name);
+#   - a plan can name those, and conform holds the code to them both ways;
+#   - the invariants can name them too, as capabilities a package, a type or a
+#     whole group keeps offering, and can fix them, so that the code offers
+#     nothing they do not list;
+#   - the invariants' rules range over types as well as packages: what kind a
+#     type is, whether it is documented, where it is defined, what it implements
+#     and what it holds;
+#   - a plan that states something nothing checks is told so.
+#
+# No type, field, package or import is new. What is below are the words the
+# description gains, and the one function that lets a person read the facts a
+# rule is checked against.
+
+Prefix(:=<https://github.com/LukasSelin/gowl/self#>)
+Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
+
+Ontology(<https://github.com/LukasSelin/gowl/design/capabilities>
+
+    # The words the description gains.
+    Declaration(AnnotationProperty(:func))
+    AnnotationAssertion(rdfs:comment :func "A function the subject Go package exports, as Name(parameter types) result types.")
+    Declaration(AnnotationProperty(:kind))
+    AnnotationAssertion(rdfs:comment :kind "What the subject Go type is underneath: struct, interface, basic, slice, array, map, chan, func or pointer.")
+    Declaration(AnnotationProperty(:name))
+    AnnotationAssertion(rdfs:comment :name "The name the subject Go package declares, which qualifies what it exports: owl in owl.Class.")
+
+    # The facts the invariants are checked against, for a person to read.
+    Declaration(NamedIndividual(:package.gowl.internal.gocode))
+    ClassAssertion(:Package :package.gowl.internal.gocode)
+    AnnotationAssertion(:func :package.gowl.internal.gocode "Facts(invariants, module *owl.Ontology, known []owl.NamedIndividual) *owl.Ontology")
+)
