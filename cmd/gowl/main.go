@@ -11,12 +11,13 @@
 //	gowl stats   [-json] file.ofn
 //	gowl gocode  [-o file.ofn] [module-dir]
 //	gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
-//	gowl plan    [-base ref] [-fail-on severity] [-json] plan.ofn [module-dir]
+//	gowl plan    [-base ref] [-invariants file] [-fail-on severity] [-json] plan.ofn [module-dir]
 //	gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
+//	gowl invariants [-file invariants.ofn] [-facts] [-fail-on severity] [-seen file] [-json] [module-dir]
 //
-// Exit status is 0 on success, 1 when a check fails (lint, sprawl, plan or
-// conform findings at or above the fail threshold, or a non-empty diff under
-// -exit-code), and 2 on a usage or I/O error.
+// Exit status is 0 on success, 1 when a check fails (lint, sprawl, plan,
+// conform or invariants findings at or above the fail threshold, or a
+// non-empty diff under -exit-code), and 2 on a usage or I/O error.
 //
 // Every command except fmt and gocode takes -json, which writes one JSON object
 // to stdout instead of text — including on failure, so a caller that parses
@@ -99,14 +100,16 @@ func usage() {
   gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
   gowl plan    [-base ref] [-invariants file] [-fail-on severity] [-json] plan.ofn [module-dir]
   gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
-  gowl invariants [-file invariants.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
+  gowl invariants [-file invariants.ofn] [-facts] [-fail-on severity] [-seen file] [-json] [module-dir]
 
 classify runs the OWL 2 EL reasoner: it infers the class hierarchy, finds
 classes that cannot have instances, and explains why a subsumption holds.
 
 gocode describes a Go module's code as an ontology: exported types become
-classes, struct fields properties, and packages individuals. Give it the
-directory holding the module's go.mod (default: the current directory).
+classes, struct fields properties, and packages individuals, and what the
+code offers, the functions of each package and the methods of each type, is
+listed by signature. Give it the directory holding the module's go.mod
+(default: the current directory).
 
 sprawl runs gocode on the module and on the same module at -base (default
 HEAD), and reports what the change added beside the existing types rather
@@ -114,17 +117,21 @@ than through them: a type whose fields repeat another's, and a new type that
 connects to nothing that was there.
 
 plan and conform keep a change to a design written before it. A plan is an
-ontology naming what the change will add, in the names gocode writes. plan
-checks it before any code exists, as though it were already built. conform
-compares the code with it both ways: what the plan names that the code lacks,
-and what the change added that the plan does not name. Unless -design says
-otherwise, the plans are the files under design/ that differ from the base,
-which defaults to where this branch left the default branch.
+ontology naming what the change will add, in the names gocode writes: types,
+fields, interfaces, methods, functions, packages and imports. plan checks it
+before any code exists, as though it were already built. conform compares the
+code with it both ways: what the plan names that the code lacks, and what the
+change added that the plan does not name. Unless -design says otherwise, the
+plans are the files under design/ that differ from the base, which defaults
+to where this branch left the default branch.
 
-invariants checks the code against design/invariants.ofn: rules about its
-packages, what they may import and which interfaces have fixed methods, that
-hold on every change rather than for one. plan checks a plan against them too,
-so a plan that would break one fails before any code exists.
+invariants checks the code against design/invariants.ofn: rules that hold on
+every change rather than for one. They say how the code looks, which is what
+its packages may import and what its types are, where they live and what they
+implement, and what it offers, which is the functions and methods a package,
+a type or a group of them keeps. plan checks a plan against them too, so a
+plan that would break one fails before any code exists. -facts prints the
+facts the rules are checked against.
 
 Every command except fmt and gocode takes -json for machine-readable output.
 Run "gowl <command> -h" for the flags of one command.

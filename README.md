@@ -493,7 +493,7 @@ gowl gocode  [-o file.ofn] [module-dir]
 gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
 gowl plan    [-base ref] [-invariants file] [-fail-on severity] [-json] plan.ofn [module-dir]
 gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
-gowl invariants [-file invariants.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
+gowl invariants [-file invariants.ofn] [-facts] [-fail-on severity] [-seen file] [-json] [module-dir]
 ```
 
 `classify` runs the EL reasoner. `-axioms` writes the inferred taxonomy as an
@@ -614,7 +614,9 @@ what the linter runs on here.
 - Packages become `:Package` individuals, linked by `:imports` to the packages
   they import. A package from outside the module, such as `fmt`, is an
   `:ExternalPackage`.
-- An interface lists the methods it declares, with the annotation `:method`.
+- What the code offers is listed by signature: the methods of each type with
+  the annotation `:method`, and the functions each package exports with the
+  annotation `:func`.
 
 ```bash
 go run ./examples/self > examples/self/gowl.ofn
@@ -652,7 +654,7 @@ $ gowl stats examples/self/gowl.ofn
 classes             122
 object properties   144
 data properties     41
-individuals         63
+individuals         64
 
 $ gowl classify -explain ":owl.SubClassOf :owl.Node" examples/self/gowl.ofn
 :owl.SubClassOf ⊑ :owl.Node follows from:
@@ -686,25 +688,48 @@ cache. Directories that hold their own `go.mod` are other modules and are
 skipped, as the go tool skips them.
 
 Besides its types, the description records each package's direct imports, and
-the methods of each interface:
+what the code offers:
 
 - A package the module imports from outside, standard library or dependency,
   is an `:ExternalPackage` individual, such as `:package.net.http`. Only the
   module's own imports are recorded, not what those packages import in turn.
   Whether a package is the module's own is decided by the packages found under
   its root, so a nested module counts as outside.
-- An interface lists each method it declares with the annotation `:method`, as
+- A type lists each method it declares with the annotation `:method`, as
   `Name(parameter types) result types`, for example
   `AnnotationAssertion(:method :owl.Entity "Kind() owl.Kind")`. Parameter names
   are left out, a type is qualified by its package's name as the classes are,
   and `byte`, `rune` and `interface{}` are written `uint8`, `int32` and `any`.
-  An unexported method counts, because one such as `owl.Axiom`'s `isAxiom`
-  seals the interface: only its own package can implement it. An embedded
-  interface of the module is a `SubClassOf` instead, and an embedded one from
-  outside it, such as `io.Reader`, adds its methods.
+- An interface lists every method. An unexported one counts, because one such
+  as `owl.Axiom`'s `isAxiom` seals the interface: only its own package can
+  implement it. An embedded interface of the module is a `SubClassOf` instead,
+  and an embedded one from outside it, such as `io.Reader`, adds its methods.
+  So does one of the module's embedded with type arguments, such as
+  `Store[int]`, which is a superclass for none of them.
+- Any other type lists the exported methods it declares itself, on the type or
+  on its pointer. A method it gets from an embedded field is that field's. A
+  method of a generic type calls the type's parameters what the type's
+  declaration calls them, whatever its receiver does.
+- A package lists each function it exports with the annotation `:func`, in the
+  same form: `AnnotationAssertion(:func :package.gowl.owl "New(owl.IRI) *owl.Ontology")`.
+  A function's own type parameters are written with it, one constraint to a
+  name, as in `First[T zoo.Animal]([]T) (T, bool)`. The annotation `:name`
+  gives the name the package declares, which is what its types are qualified
+  with.
+- A type says what it is underneath with the annotation `:kind`: `struct`,
+  `interface`, or `basic`, `slice`, `array`, `map`, `chan`, `func` or
+  `pointer`.
+- A type declared in a group, `type ( … )`, with no comment of its own has the
+  group's, which is what `go doc` shows for it. A comment that runs into a
+  package clause and begins like a licence header, with `Copyright` or
+  `All rights`, is not taken for the package's.
 - Imports are read from the files that build on the machine running gocode, so
   an import that only a file such as `x_windows.go` makes shows up on Windows
   alone.
+- Exported constants and variables are not recorded.
+- A class is named after its package's name, not its path. Two packages of one
+  name that each declare a type of one name therefore share a class, and what
+  is said of either is said of both.
 
 One importer serves the standard library and the dependencies, so each package
 is loaded once. A cobra command's `context.Context` is therefore the same type
@@ -754,13 +779,14 @@ those on every run would hide the one copy a change has just added. For the
 same reason, a match that already held before the change is not reported
 again just because one of its two types changed.
 
-The checks see only what `gocode` records:
+The checks see types and their fields, as `gocode` records them:
 
 - exported types;
 - fields whose type is a module type (directly, or through a pointer or slice)
   or a basic type.
 
-Maps, functions and methods are not recorded. A type that is only ever a
+Fields of maps are not recorded, and functions and methods are recorded only
+as signatures, which these checks do not read. A type that is only ever a
 function parameter, such as an options struct, therefore looks unconnected,
 which is why `new-orphan` is only `info`. Duplicate functions are a job for a
 clone detector.
@@ -833,20 +859,54 @@ warning: same-shape-type: :store.Holding has the same fields as :store.Stock (:s
 1 finding(s)
 ```
 
-An interface's methods are its contract, and a plan that adds or changes one
-names it. Parameter names and spacing are the writer's own, and a bare type of
-the interface's package, such as `Item` in package `store`, means `store.Item`:
+A plan also names what the change makes the code offer: the methods of a type,
+and the functions of a package. Each is a signature. Parameter names and
+spacing are the writer's own, and a bare type, such as `Holding` in package
+`store`, means `store.Holding`. A plan can say what kind of type one is, and
+which package defines it:
 
 ```
+    AnnotationAssertion(:kind :store.Holding "struct")
+    AnnotationAssertion(:definedIn :store.Holding :package.example.com.store)
+    AnnotationAssertion(:method :store.Holding "Worth(price int) int")
+    AnnotationAssertion(:func :package.example.com.store "Total(holdings []Holding) int")
+
     Declaration(Class(:store.Priced))
+    AnnotationAssertion(:kind :store.Priced "interface")
     AnnotationAssertion(:method :store.Priced "Price(item Item) (cents int, err error)")
 ```
+
+An interface's methods are its contract, so a plan that adds or changes an
+interface names every method it declares. For any other type it names the
+exported methods the change adds, apart from the ones an interface asks for:
+saying that the type satisfies the interface plans those.
+
+What a signature calls the type parameters it declares is the writer's own, as
+its parameter names are: `Map[A, B any](xs []A, f func(A) B) []B` is the code's
+`Map[T, U any]`. The parameters of a generic type are another matter, because a
+method does not declare them. A plan calls them what the type's declaration
+does, and so does `gocode`, whatever a method's receiver calls them.
+
+These annotations describe a type or a package. They do not name it into being:
+a new type still needs its `Declaration(Class(…))`, and a new package its
+`ClassAssertion(:Package …)`. An annotation about something the module does not
+have and the plan does not declare is reported by `gowl plan` as
+`undeclared-entity`, the same as any other name the plan uses and never
+declares. That is also how a slip in a name shows up.
+
+A plan can say only what `gocode` writes about code. Anything else it states,
+such as a `DisjointClasses`, a class expression or a group, is checked by
+nothing, and `gowl plan` reports it as `unchecked-axiom` while it is still a
+plan. It reports a method or a function that is not a signature too, as
+`malformed-method` or `malformed-func`.
 
 `gowl conform` compares the code with the plan, both ways:
 
 | Rule | Severity | Reports |
 |---|---|---|
 | `missing-type` | error | a type the plan names and the code does not have |
+| `kind-mismatch` | error | a type that is another kind of type than the plan says: a struct where it says interface |
+| `misplaced-type` | error | a type the code defines in another package than the plan says |
 | `missing-field` | error | a field the plan names and the code does not have |
 | `field-mismatch` | error | a field on another struct, or holding another type, than the plan says |
 | `missing-interface` | error | a type that does not satisfy an interface the plan says it satisfies |
@@ -856,10 +916,11 @@ the interface's package, such as `Item` in package `store`, means `store.Item`:
 | `unplanned-package` | error | a package the change added that no plan names |
 | `unplanned-field` | warning | a field the change added or retyped that no plan names |
 | `unplanned-import` | warning | an import the change added that no plan names |
-| `missing-method` | error | a method the plan gives an interface that the code does not declare |
-| `method-mismatch` | error | a method the code declares with another signature than the plan's |
-| `unplanned-method` | error | a method the change added to an interface, or changed, that no plan names |
-| `malformed-method` | error | a method in a plan that is not a signature |
+| `missing-method`, `missing-func` | error | a method the plan gives a type, or a function it gives a package, that the code does not declare |
+| `method-mismatch`, `func-mismatch` | error | one the code declares with another signature than the plan's |
+| `unplanned-method` | error on an interface, warning on any other type | a method the change added, or changed, that no plan names |
+| `unplanned-func` | warning | a function the change added, or changed, that no plan names |
+| `malformed-method`, `malformed-func` | error | one in a plan that is not a signature |
 
 A plan is about the module's own structure, so the change's imports from outside
 the module are not reported: what the module may depend on is a rule for the
@@ -880,24 +941,39 @@ error: unplanned-type: type :store.Memo is new, and no plan names it
 2 finding(s)
 ```
 
+Or suppose the plan has the four lines about `Holding` above, and the code gives
+`Total` a second parameter and adds a function nobody planned:
+
+```
+$ gowl conform -fail-on warning
+compared with main merge-base (246f55cd3a00): 1 plan(s), 8 planned item(s) checked
+  plans:     design/holdings.ofn
+
+error: func-mismatch: in the plan, :package.example.com.store has the function Total([]store.Holding) int, and the code has Total([]store.Holding, int) int
+warning: unplanned-func: :package.example.com.store now offers the function Largest([]store.Holding) store.Holding, and no plan names it
+
+2 finding(s)
+```
+
 The plans are the files under `design/` that differ from the base, or the ones
 named with `-design`. The base defaults to where this branch left the default
 branch, so a plan committed partway through a branch still counts. Once merged, a
 plan is part of the base and is no longer checked: it records a decision, and
 later changes write their own. For the same reason, a plan has to reach the
 default branch together with its code, or be named with `-design`. A change that
-adds no exported structure, such as most bug fixes, passes with no plan at all.
+adds nothing exported, such as most bug fixes, passes with no plan at all.
 
 A plan can only say as much as `gocode` records:
 
-- **Structure only.** Interfaces' methods are in it; functions, the methods of
-  other types, and behaviour are not, so a plan does not replace tests.
-- **Exported types and some of their fields.** A field of a map, a function or a
-  type from outside the module is not recorded, so a plan cannot name one and
-  `conform` does not see one being added.
+- **Structure only.** What the code offers is in it by signature; what a
+  function does is not, so a plan does not replace tests.
+- **What is exported.** Types, some of their fields, methods and functions. A
+  field of a map, a function or a type from outside the module is not recorded,
+  nor is a constant or a variable, so a plan cannot name one and `conform` does
+  not see one being added.
 - **Additions only.** A plan says what should exist, so removing something is not
-  reported. The invariants can fix an interface's methods so that removing one
-  is.
+  reported. The invariants say what the code keeps offering, so that removing a
+  function or a method they name is.
 - **Go only.** `gocode` reads Go modules.
 
 #### Holding an agent to the plan
@@ -919,17 +995,21 @@ They run only in Claude Code sessions, so to hold everyone to a plan, also run
   and a tree that does not build skips the check.
 
 The gate sees only `Edit` and `Write`, and only types. Anything changed through a
-shell command, and any field, import or package, is caught at the end of the turn
-instead.
+shell command, and any field, method, function, import or package, is caught at
+the end of the turn instead.
 
 ### Invariants that outlive a change
 
 A plan is about one change, says only what should exist, and is retired once it
 is merged. Some decisions are not like that: the core does no I/O, `owl` imports
-nothing else in the module, a new package is put in a layer on purpose. Those go
-in `design/invariants.ofn`, which is never retired. `gowl invariants` checks the
-code against it, and `gowl plan` checks every plan against it, so a plan that
-would break a rule fails while it is still a few lines of a design.
+nothing else in the module, every exported type is documented, the library keeps
+offering `owl.ParseFunctional`. Those go in `design/invariants.ofn`, which is
+never retired. `gowl invariants` checks the code against it, and `gowl plan`
+checks every plan against it, so a plan that would break a rule fails while it
+is still a few lines of a design.
+
+The file says three kinds of thing: what may import what, how the code looks,
+and what it offers.
 
 ```
 Prefix(:=<https://example.com/shop#>)
@@ -947,44 +1027,59 @@ Ontology(<https://example.com/shop/design/invariants>
     SubObjectPropertyOf(:imports :dependsOn)
     TransitiveObjectProperty(:dependsOn)
 
-    # Rules.
+    # Layers.
     DisjointClasses(Annotation(rdfs:comment "The core does no I/O")
         :Core ObjectSomeValuesFrom(:dependsOn :Effectful))
     SubClassOf(Annotation(rdfs:comment "Every package is placed on purpose")
         :Package ObjectUnionOf(:Core :Edge))
 
+    # Shape.
+    SubClassOf(Annotation(rdfs:comment "Every exported type says what it is for")
+        :Type :Documented)
+    SubClassOf(Annotation(rdfs:comment "Interfaces belong to the core, and the edge implements them")
+        :Interface ObjectSomeValuesFrom(:definedIn :Core))
+
     # A contract: these are the methods of core.Store, now and later.
     AnnotationAssertion(:method :core.Store "Get(id int) (Thing, error)")
+
+    # Capabilities: what the shop keeps offering.
+    AnnotationAssertion(:func :package.example.com.shop.core "Open(name string) (Store, error)")
+    AnnotationAssertion(:func :Core "Version() string")
 )
 ```
 
-When billing starts to use the api, the core reaches the network through it:
+Suppose billing starts to use the api and drops its `Version`, and the api gains
+an interface with no comment:
 
 ```
 $ gowl invariants
-checked against design/invariants.ofn: 3 rule(s)
+checked against design/invariants.ofn: 8 rule(s)
 
+error: invariant-violated: Every exported type says what it is for: :api.Hook is :Type, and :api.Hook is not :Documented
+error: invariant-violated: Interfaces belong to the core, and the edge implements them: :api.Hook is :Interface, and :api.Hook has no :definedIn to anything that is :Core
 error: invariant-violated: The core does no I/O: :package.example.com.shop.billing is :Core, and :package.example.com.shop.billing :dependsOn :package.net.http, which is :Effectful (through :package.example.com.shop.billing →:imports :package.example.com.shop.api →:imports :package.net.http)
+error: missing-func: in the invariants, :package.example.com.shop.billing has the function Version() string, and the code does not declare it
 
-1 finding(s)
+4 finding(s)
 ```
 
-The rule comes first, in its own words, then the package that breaks it, and
-the imports to blame. That is a counterexample, the way a model checker gives
-one, and it is the shortest the facts allow.
+The rule comes first, in its own words, then the package or type that breaks
+it, and for the third the imports to blame. That is a counterexample, the way a
+model checker gives one, and it is the shortest the facts allow.
 
 **How it reads the file.** A reasoner reads axioms open-world: that a package is
 not said to import `os` does not mean it does not. A description of code is
 different. It is complete for what it records, so the check is closed-world:
-what the code does not do, it does not do. Each axiom has one of four jobs:
+what the code does not do, it does not do. Each axiom has one of five jobs:
 
-- **The code's facts** are which packages there are and what each imports. Only
-  the code says so: an assertion about `:Package`, `:ExternalPackage` or
-  `:imports` in the file is refused. To forbid an import, use
-  `NegativeObjectPropertyAssertion`.
+- **The code's facts** are what the code says about its packages and its types,
+  listed below. Only the code says so: an assertion in the file about one of
+  the code's words, such as `:Package`, `:imports` or `:Documented`, is refused.
+  To forbid a fact, use `NegativeObjectPropertyAssertion`.
 - **Groups** are `ClassAssertion`s with a class of the file's own, such as
-  `:Core`. `ClassAssertion(:ExternalPackage …)` declares a package the module
-  does not depend on yet, so that a rule can forbid it.
+  `:Core`. A group can hold packages or types. `ClassAssertion(:ExternalPackage …)`
+  declares a package the module does not depend on yet, so that a rule can
+  forbid it.
 - **Derived properties** come from `SubObjectPropertyOf` between named
   properties and `TransitiveObjectProperty`. They may only define a property
   the facts do not state, so a rule can define `:dependsOn` from `:imports`,
@@ -994,10 +1089,39 @@ what the code does not do, it does not do. Each axiom has one of four jobs:
   `owl:Nothing`, `ObjectIntersectionOf`, `ObjectUnionOf`, `ObjectComplementOf`,
   `ObjectOneOf`, `ObjectSomeValuesFrom`, `ObjectAllValuesFrom` and
   `ObjectHasValue`, with a property or its `ObjectInverseOf`.
+- **Capabilities** are `:method` and `:func` annotations: what a type, a
+  package or a group offers, by signature.
 
-A `:method` annotation fixes an interface's methods: the code must have exactly
-those, so a method added, changed or removed is reported on every run, unlike
-in a plan.
+**The facts.** In the description `gocode` writes, a type is a class. A rule is
+about things, so here each type is an individual under the same name, beside the
+packages: `:core.Store` in a rule is the type `core.Store`.
+
+| Fact | Says |
+|---|---|
+| `:Package`, `:ExternalPackage` | a package of the module, or one from outside it that the module imports |
+| `:imports` | the subject package imports the object package directly |
+| `:Type` | an exported named type of the module |
+| `:Struct`, `:Interface` | what the type is underneath; a type of another kind is in neither |
+| `:Documented` | a type with a doc comment, its own or its declaration group's, or a package with a package comment |
+| `:definedIn` | the package that declares the type |
+| `:implements` | an interface of the module that the type satisfies, directly or not |
+| `:holds` | a type of the module that one of the type's exported fields holds, directly or through a pointer or slice |
+
+`gowl invariants -facts` prints the facts for the module as it stands, with the
+file's groups, as an ontology. That is the thing to read when a rule does not
+say what you expected:
+
+```
+$ gowl invariants -facts
+    ...
+    ClassAssertion(:Core :package.example.com.shop.core)
+    ClassAssertion(:Documented :core.Store)
+    ClassAssertion(:Interface :api.Hook)
+    ClassAssertion(:Type :api.Hook)
+    ObjectPropertyAssertion(:definedIn :api.Hook :package.example.com.shop.api)
+    ObjectPropertyAssertion(:imports :package.example.com.shop.billing :package.example.com.shop.api)
+    ...
+```
 
 The subject of a `SubClassOf`, and each operand of a `DisjointClasses`, has to
 be bounded by the facts: a named class, `ObjectOneOf`, `ObjectHasValue`,
@@ -1006,19 +1130,67 @@ be bounded by the facts: a named class, `ObjectOneOf`, `ObjectHasValue`,
 because who they include depends on which names happen to be mentioned, and a
 rule over them could change its answer when an unrelated package is named.
 
+**What the code offers.** A plan names a function or a method once, for the
+change that adds it. The invariants name the ones the code keeps:
+
+- `AnnotationAssertion(:func P "…")` on a package: `P` exports that function,
+  with that signature.
+- `AnnotationAssertion(:method T "…")` on a type: `T` has that method.
+- On a group, such as `:Core` above, every package in it, or every type, has
+  it. A bare type in the signature is read in each member's own package.
+
+The code has to have each, as written, and may offer more. Two things offer
+exactly what the file lists, so that one more is reported as well as one fewer:
+
+- an interface the file gives methods to by name, rather than through a group,
+  because every implementation depends on the whole of it;
+- a package or a type the file puts in the group `:Fixed`. With nothing listed,
+  it offers nothing.
+
+```
+    ClassAssertion(:Fixed :package.example.com.shop.core)
+```
+
+```
+error: unplanned-func: the invariants fix the functions of :package.example.com.shop.core, and the code adds Close() error
+```
+
+An interface of the module that another embeds is not among that interface's
+methods: it is something it `:implements`. So an interface whose methods are
+fixed can still grow by embedding, unless a rule says what it may embed:
+
+```
+    SubClassOf(Annotation(rdfs:comment "core.Store embeds nothing of the module's")
+        ObjectOneOf(:core.Store) ObjectAllValuesFrom(:implements owl:Nothing))
+```
+
+Only methods and functions are written as annotations here. What kind a type
+is, and which package defines it, are facts, and holding a type to one is a
+rule, such as `SubClassOf(ObjectOneOf(:core.Store) :Interface)`. A `:kind` or
+`:definedIn` annotation, which is how a plan says the same, is refused in this
+file rather than left unchecked.
+
 | Rule | Severity | Reports |
 |---|---|---|
-| `invariant-violated` | error | a rule the code breaks, once for each package that breaks it |
+| `invariant-violated` | error | a rule the code breaks, once for each package or type that breaks it |
 | `unsupported-invariant` | error | an axiom outside what the checker reads, with the reason; it is an error because a rule nobody checks reads as if it held |
 | `unknown-package` | error | a package that is no package of the module, the standard library, a dependency or a plan for the change, and is not declared an `:ExternalPackage`: usually a misspelling, which in a rule that forbids a package quietly forbids nothing |
-| `empty-term` | warning | a group or property the rules use that nothing defines, so they hold or fail for no package |
-| `missing-method`, `method-mismatch`, `unplanned-method` | error | a fixed interface whose methods differ from the file's |
+| `unknown-type` | error | a type the file names that the module does not export, and no plan for the change names |
+| `empty-term` | warning | a group or property the rules use that nothing defines, so they hold or fail for nothing |
+| `missing-method`, `missing-func` | error | a method or function the file names that the code does not declare |
+| `method-mismatch`, `func-mismatch` | error | one the code declares with another signature than the file's |
+| `unplanned-method`, `unplanned-func` | error | one the code adds to an interface the file gives methods to, or to something `:Fixed` |
+| `missing-type`, `missing-package` | error | methods or functions given to something that is neither a type or package of the module nor a group with anything in it |
 
-**What it can and cannot see.** It sees packages and their direct imports, and
-interfaces' methods. Imports are a proxy for effects, and a coarse one: `fmt`
-both formats strings and prints them. Packages from outside the module have no
-imports of their own in the facts, so `:dependsOn` follows the module's own
-packages and stops at the first package outside it.
+**What it can and cannot see.** It sees packages and their direct imports;
+types, with their kind, their documentation, their package, the interfaces they
+satisfy and the types their fields hold; and methods and functions, by
+signature. Imports are a proxy for effects, and a coarse one: `fmt` both formats
+strings and prints them. Packages from outside the module have no imports of
+their own in the facts, so `:dependsOn` follows the module's own packages and
+stops at the first package outside it. Methods and functions are not facts a
+rule can range over, only signatures to hold the code to. Constants, variables
+and what a function does are not seen at all.
 
 **The checker.** [`internal/icv`](internal/icv/icv.go) does the checking. It
 knows nothing about Go and does no I/O; [`CheckInvariants`](internal/gocode/invariants.go)
@@ -1038,16 +1210,53 @@ As with the reasoner, the batch has to contain both broken and kept rules, so
 the comparison cannot pass vacuously.
 
 **gowl's own.** [`design/invariants.ofn`](design/invariants.ofn) holds the
-following rules:
+following rules. About layers:
 
 - every package is in the library, internal or the tools;
 - `owl` imports nothing else in the module;
 - the library never reaches into internal packages;
 - the library and the pure internal packages never reach `os`, the network,
   `os/exec` or logging;
-- `internal/icv`, the checker, builds on `owl` and the standard library alone;
+- `internal/icv`, the checker, builds on `owl` and the standard library alone.
+
+About shape:
+
+- every package has a package comment, and every exported type a doc comment;
+- the library is `owl`, `el`, `lint`, `vocab` and the generated vocabularies,
+  so a fifth hand-written package is decided in the file first;
+- the internal packages are the five there are, and the tools the two commands
+  and the two examples, so another of either is decided in the file first too;
+- a generated vocabulary builds on `owl` and the standard library alone, and
+  defines no types of its own;
+- `internal/icv` exports two types, its report and the violations in it.
+
+About what the code offers:
+
 - the methods of `owl.Node` and `owl.Entity`, and the seal of `owl.Axiom`, are
-  fixed.
+  fixed, and of the module's interfaces they embed `owl.Node` and no other;
+- every package is `:Fixed`, and the file lists every function the module
+  exports. So an exported function is added, renamed, given another signature
+  or taken away in the file first, whether it is in the library, in an internal
+  package or in a tool;
+- every generated vocabulary offers `Ontology()` and `Vocabulary()`, the
+  checker offers `Validate`, and the two commands and `examples/self` export no
+  function at all;
+- `owl.Ontology` keeps `Add`, `All`, `Signature`, `Functional`,
+  `WriteFunctional` and `Err`, and `el.Classification` keeps its queries. A
+  type may have more methods than the file lists.
+
+```
+$ gowl invariants
+checked against design/invariants.ofn: 138 rule(s)
+
+no findings
+```
+
+Fixing every package has a price, which is the point of it. A change that adds
+an exported function writes its `:func` line in the file before the plan, or
+`gowl plan` reports `unplanned-func`. Until the code is written `gowl invariants`
+reports that line as `missing-func`: the file is ahead of the code, and the
+finding goes when the code catches up.
 
 `TestOwnInvariantsHold` in [`examples/self`](examples/self/main_test.go) keeps
 them in `go test ./...`.

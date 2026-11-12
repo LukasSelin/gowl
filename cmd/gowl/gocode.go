@@ -9,8 +9,9 @@ import (
 )
 
 // cmdGoCode describes a Go module's code as an ontology: exported types as
-// classes, struct fields as properties, packages as individuals. Like fmt it
-// prints an ontology document rather than a report, so it takes no -json.
+// classes, struct fields as properties, packages as individuals, and methods
+// and functions as signatures. Like fmt it prints an ontology document rather
+// than a report, so it takes no -json.
 func cmdGoCode(args []string) int {
 	fs := flag.NewFlagSet("gocode", flag.ContinueOnError)
 	out := fs.String("o", "", "write the ontology to this file instead of stdout")

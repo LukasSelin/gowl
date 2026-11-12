@@ -72,10 +72,66 @@ type Cat struct {
 // Name names the cat.
 func (Cat) Name() string { return "cat" }
 
+// Stray lets the cat out.
+func (c *Cat) Stray(far bool) (home pen.Pen, err error) { return c.Home, nil }
+
+func (Cat) purr() {}
+
 // Feed hands on the keeper's context, so the module and its dependency have to
 // agree on what a context.Context is.
 func Feed() context.Context { return keeper.Context() }
+
+// First picks the first of a litter.
+func First[T Animal](litter []T) (T, bool) {
+	var none T
+	return none, false
+}
+
+func hidden() {}
+
+// Pair is two of a kind.
+type Pair[K comparable, V any] struct {
+	Left  K
+	Right V
+}
+
+// Both returns the two. The method has its own names for the type's
+// parameters, and they are described under the type's.
+func (p Pair[A, B]) Both() (A, B) { return p.Left, p.Right }
+
+// Swap returns them the other way round, in a method that calls the type's
+// parameters by each other's names.
+func (p Pair[V, K]) Swap() (K, V) { return p.Right, p.Left }
+
+// Enclosures.
+type (
+	Cage struct{ Bars int }
+	// Tank holds water.
+	Tank struct{ Litres int }
+)
+
+// Sound is what an animal says.
+type Sound string
+
+// Author is who wrote the zoo's guide book.
+type Author struct{ Name string }
+
+// Keeper keeps animals of one kind.
+type Keeper[T Animal] interface{ Keep(t T) error }
+
+// CatKeeper keeps cats, and can say how many.
+type CatKeeper interface {
+	Keeper[Cat]
+	Count() int
+}
+
+var _ = hidden
 `)
+	// A directive above a package clause is no package comment, and does not
+	// hide the one another file has.
+	write("zoo/a_gen.go", "//go:generate echo generated\npackage zoo\n")
+	// A licence header that runs into the package clause is not one either.
+	write("zoo/licensed/licensed.go", "// Copyright 2024 The Zoo Authors. All rights reserved.\npackage licensed\n")
 	write("zoo/pen/pen.go", `// Package pen holds enclosures.
 package pen
 
@@ -113,12 +169,47 @@ type Ghost struct{}
 		`AnnotationAssertion(:method :zoo.Feeder "Feed(context.Context, ...int) (int, error)"^^xsd:string)`,
 		`AnnotationAssertion(:method :zoo.Feeder "Read([]uint8) (int, error)"^^xsd:string)`,
 		`AnnotationAssertion(:method :zoo.Feeder "seal()"^^xsd:string)`,
+		// An embedded interface of the module with type arguments is no
+		// superclass, because nothing satisfies a generic interface as such.
+		// Its methods are listed, for the arguments it was given.
+		`AnnotationAssertion(:method :zoo.Keeper "Keep(T) error"^^xsd:string)`,
+		`AnnotationAssertion(:method :zoo.CatKeeper "Count() int"^^xsd:string)`,
+		`AnnotationAssertion(:method :zoo.CatKeeper "Keep(zoo.Cat) error"^^xsd:string)`,
+		// Any other type lists the exported methods it declares, on itself or
+		// on its pointer, and a package the functions it exports, under the
+		// name it declares.
+		`AnnotationAssertion(:method :zoo.Cat "Name() string"^^xsd:string)`,
+		`AnnotationAssertion(:method :zoo.Cat "Stray(bool) (pen.Pen, error)"^^xsd:string)`,
+		`AnnotationAssertion(:method :zoo.Pair "Both() (K, V)"^^xsd:string)`,
+		`AnnotationAssertion(:method :zoo.Pair "Swap() (V, K)"^^xsd:string)`,
+		`AnnotationAssertion(:func :package.example.com.zoo "Feed() context.Context"^^xsd:string)`,
+		`AnnotationAssertion(:func :package.example.com.zoo "First[T zoo.Animal]([]T) (T, bool)"^^xsd:string)`,
+		`AnnotationAssertion(:name :package.example.com.zoo "zoo"^^xsd:string)`,
+		`AnnotationAssertion(:name :package.example.com.zoo.pen "pen"^^xsd:string)`,
+		// What each type is underneath.
+		`AnnotationAssertion(:kind :zoo.Animal "interface"^^xsd:string)`,
+		`AnnotationAssertion(:kind :zoo.Cat "struct"^^xsd:string)`,
+		`AnnotationAssertion(:kind :zoo.Sound "basic"^^xsd:string)`,
+		// A type declared in a group has the group's comment when it has none
+		// of its own, as go doc shows it.
+		`AnnotationAssertion(rdfs:comment :zoo.Cage "Enclosures."^^xsd:string)`,
+		`AnnotationAssertion(rdfs:comment :zoo.Tank "Tank holds water."^^xsd:string)`,
+		// go doc's synopsis says nothing for a comment that begins like a
+		// licence header, with "author" among others, and a type called
+		// Author is documented all the same.
+		`AnnotationAssertion(rdfs:comment :zoo.Author "Author is who wrote the zoo's guide book."^^xsd:string)`,
+		`AnnotationAssertion(rdfs:comment :package.example.com.zoo "Package zoo keeps animals."^^xsd:string)`,
+		"ClassAssertion(:Package :package.example.com.zoo.licensed)",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("missing %s", want)
 		}
 	}
-	for _, unwanted := range []string{"Ghost", "package.example.com.zoo.nested", `:zoo.Feeder "Name() string"`, "ClassAssertion(:Package :package.example.com.keeper)", ":package.context :"} {
+	for _, unwanted := range []string{"Ghost", "package.example.com.zoo.nested", `:zoo.Feeder "Name() string"`, "ClassAssertion(:Package :package.example.com.keeper)", ":package.context :",
+		// Unexported methods and functions are nobody else's business, and a
+		// package from outside the module is not described.
+		"purr", "hidden", ":name :package.context", ":func :package.example.com.keeper",
+		"rdfs:comment :package.example.com.zoo.licensed"} {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("describes %s, which is not part of the module", unwanted)
 		}

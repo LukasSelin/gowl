@@ -161,3 +161,135 @@ Ontology(<https://example.com/store/design/audit>
 		t.Errorf("exit = %d, want 0 with no unknown package\n%s", code, out)
 	}
 }
+
+// storeShape adds rules about the store's types, and what the store offers.
+const storeShape = `    SubClassOf(Annotation(rdfs:comment "Every type says what it is for") :Type :Documented)
+    AnnotationAssertion(:func :package.example.com.store "Count(s *Stock) int")
+`
+
+// withShape adds storeShape to the store's invariants.
+func withShape(extra string) string {
+	return strings.Replace(storeInvariants, "    ClassAssertion(:Effectful :package.os)\n",
+		"    ClassAssertion(:Effectful :package.os)\n"+storeShape+extra, 1)
+}
+
+// The invariants reach types and what the code offers, and a broken one names
+// the type or the package and says what is missing.
+func TestInvariantsAboutTypesAndCapabilities(t *testing.T) {
+	dir := storeRepo(t)
+	putPlan(t, dir, "invariants.ofn", withShape(""))
+	if err := os.WriteFile(filepath.Join(dir, "bare.go"), []byte("package store\n\ntype Bare struct{ Of *Item }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	out, code := capture(t, func() int { return run([]string{"invariants", dir}) })
+	if code != exitFailed {
+		t.Errorf("exit = %d, want 1\n%s", code, out)
+	}
+	for _, want := range []string{
+		"design/invariants.ofn: 3 rule(s)",
+		"error: invariant-violated: Every type says what it is for: :store.Bare is :Type, and :store.Bare is not :Documented",
+		"error: missing-func: in the invariants, :package.example.com.store has the function Count(*store.Stock) int, and the code does not declare it",
+		"2 finding(s)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output should contain %q:\n%s", want, out)
+		}
+	}
+}
+
+// -facts prints what the rules are checked against instead of checking them.
+func TestInvariantsFacts(t *testing.T) {
+	dir := storeRepo(t)
+
+	// With no invariants yet, the code's facts are still there to read.
+	out, code := capture(t, func() int { return run([]string{"invariants", "-facts", dir}) })
+	if code != exitOK || !strings.Contains(out, "ClassAssertion(:Type :store.Item)") {
+		t.Errorf("exit = %d, want 0 and the code's facts\n%s", code, out)
+	}
+
+	putPlan(t, dir, "invariants.ofn", withShape(""))
+	useOS(t, dir)
+	out, code = capture(t, func() int { return run([]string{"invariants", "-facts", dir}) })
+	if code != exitOK {
+		t.Errorf("exit = %d, want 0: -facts checks nothing\n%s", code, out)
+	}
+	for _, want := range []string{
+		"Ontology(<https://example.com/store>",
+		"ClassAssertion(:Package :package.example.com.store)",
+		"ClassAssertion(:Core :package.example.com.store)",
+		"ObjectPropertyAssertion(:imports :package.example.com.store :package.os)",
+		"ClassAssertion(:Struct :store.Holding)",
+		"ObjectPropertyAssertion(:definedIn :store.Holding :package.example.com.store)",
+		"ObjectPropertyAssertion(:holds :store.Holding :store.Item)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output should contain %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "invariant-violated") || strings.Contains(out, "finding") {
+		t.Errorf("-facts should report no findings:\n%s", out)
+	}
+
+	if out, code := capture(t, func() int { return run([]string{"invariants", "-facts", "-json", dir}) }); code != exitProblem {
+		t.Errorf("exit = %d, want 2: the facts are an ontology, not a report\n%s", code, out)
+	}
+}
+
+// A type a plan for the change names is not yet in the code, and a rule may
+// already be about it.
+func TestInvariantsKnowTheTypesThePlansName(t *testing.T) {
+	dir := storeRepo(t)
+	rule := "    SubClassOf(ObjectOneOf(:store.Ledger) ObjectSomeValuesFrom(:holds ObjectOneOf(:store.Item)))\n"
+	putPlan(t, dir, "invariants.ofn", strings.Replace(storeInvariants,
+		"    ClassAssertion(:Effectful :package.os)\n", "    ClassAssertion(:Effectful :package.os)\n"+rule, 1))
+
+	out, code := capture(t, func() int { return run([]string{"invariants", dir}) })
+	if code != exitFailed || !strings.Contains(out, "error: unknown-type: the invariants name :store.Ledger, which is no exported type of the module") {
+		t.Errorf("exit = %d, want 1 and the type nobody has\n%s", code, out)
+	}
+
+	putPlan(t, dir, "ledger.ofn", `Prefix(:=<https://example.com/store#>)
+Ontology(<https://example.com/store/design/ledger>
+    Declaration(Class(:store.Ledger))
+)
+`)
+	out, _ = capture(t, func() int { return run([]string{"invariants", dir}) })
+	if strings.Contains(out, "unknown-type") {
+		t.Errorf("a type a plan names is not unknown:\n%s", out)
+	}
+}
+
+// A plan is checked against the rules about types and against what the
+// invariants say the code offers, before any code exists.
+func TestPlanChecksShapeAndCapabilities(t *testing.T) {
+	dir := storeRepo(t)
+	putPlan(t, dir, "invariants.ofn", withShape("    ClassAssertion(:Fixed :package.example.com.store)\n"))
+	path := putPlan(t, dir, "ledger.ofn", `Prefix(:=<https://example.com/store#>)
+Ontology(<https://example.com/store/design/ledger>
+    Declaration(Class(:store.Ledger))
+    AnnotationAssertion(:func :package.example.com.store "Count(s *Stock) int")
+    AnnotationAssertion(:func :package.example.com.store "Audit(s *Stock) error")
+    DisjointClasses(:store.Ledger :store.Stock)
+)
+`)
+	out, code := capture(t, func() int { return run([]string{"plan", "-base", "HEAD", path, dir}) })
+	if code != exitFailed {
+		t.Errorf("exit = %d, want 1\n%s", code, out)
+	}
+	for _, want := range []string{
+		// The planned type has no comment, and the plan adds a function to a
+		// package whose functions are fixed. Count is what the invariants ask
+		// for, so planning it mends what the base lacks.
+		"error: invariant-violated: Every type says what it is for: :store.Ledger is :Type, and :store.Ledger is not :Documented",
+		"error: unplanned-func: the invariants fix the functions of :package.example.com.store, and the code adds Audit(*store.Stock) error",
+		"warning: unchecked-axiom: the plan states DisjointClasses(:store.Ledger :store.Stock), which nothing checks",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("output should contain %q:\n%s", want, out)
+		}
+	}
+	if strings.Contains(out, "missing-func") {
+		t.Errorf("the plan adds Count, so it is not missing once the plan is built:\n%s", out)
+	}
+}

@@ -1,6 +1,7 @@
 package gocode
 
 import (
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -251,4 +252,383 @@ func TestReviewInvariants(t *testing.T) {
 	}
 	// A plan that keeps to the rules hears nothing, not even about util.
 	wantFindings(t, ReviewInvariants(inv, shopPlan(t, "Declaration(Class(:core.Thing))"), before, ks).Findings)
+}
+
+// A plan that puts its new package in a group itself has put the group in the
+// wrong file. Reviewing the plan says so. Here the package is one nobody
+// placed, and the invariants' own groups are read as they were: the plan using
+// their name takes nothing from them.
+func TestReviewInvariantsWithAGroupInThePlan(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	before := writeModule(t, shopFiles(nil))
+	plan := shopPlan(t, `
+		Declaration(Class(:Core))
+		ClassAssertion(:Package :package.example.com.shop.audit)
+		ClassAssertion(:Core :package.example.com.shop.audit)
+	`)
+	wantFindings(t, ReviewInvariants(invariants(t, shopRules), plan, before, known(t, before)).Findings,
+		"invariant-violated package.example.com.shop.audit")
+}
+
+// What the shop's types look like, for the rules about types to be about.
+const (
+	// The core gains a type with no comment that holds a Thing, and a store.
+	invCoreTypes = invCore + `
+type Bare struct{ Of Thing }
+
+// Memory keeps things in memory.
+type Memory struct{ Things []Thing }
+
+// Get gets a thing.
+func (Memory) Get(id int) (Thing, error) { return Thing{}, nil }
+`
+	// The api gains a store of its own, and an interface.
+	invAPITypes = invAPI + `
+// Remote keeps things far away.
+type Remote struct{}
+
+// Get fetches a thing.
+func (Remote) Get(id int) (core.Thing, error) { return core.Thing{}, nil }
+
+// Handler is something the api asks for.
+type Handler interface{ Handle() }
+`
+)
+
+// The rules reach the module's types as well as its packages: what each is,
+// whether it is documented, where it is defined, what it implements and what
+// it holds.
+func TestInvariantsAboutTypes(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	o := writeModule(t, shopFiles(map[string]string{"core/core.go": invCoreTypes, "api/api.go": invAPITypes}))
+	c := check(t, o, shopRules+`
+		SubClassOf(Annotation(rdfs:comment "Every type says what it is for") :Type :Documented)
+		SubClassOf(Annotation(rdfs:comment "Interfaces belong to the core") :Interface ObjectSomeValuesFrom(:definedIn :Core))
+		SubClassOf(Annotation(rdfs:comment "A store lives in the core") ObjectHasValue(:implements :core.Store) ObjectSomeValuesFrom(:definedIn :Core))
+		NegativeObjectPropertyAssertion(Annotation(rdfs:comment "Nothing bare holds a thing") :holds :core.Bare :core.Thing)
+		DisjointClasses(Annotation(rdfs:comment "A struct is no interface") :Struct :Interface)
+	`)
+	wantFindings(t, c.Findings,
+		"invariant-violated api.Handler",
+		"invariant-violated api.Remote",
+		"invariant-violated core.Bare",
+		"invariant-violated core.Bare",
+	)
+	if c.Checked != 7 {
+		t.Errorf("checked = %d, want 7: the shop's two rules and these five", c.Checked)
+	}
+	said := map[string]string{}
+	for _, f := range c.Findings {
+		_, local, _ := strings.Cut(string(f.Subject), "#")
+		said[local] += f.Message + "\n"
+	}
+	for subject, want := range map[string][]string{
+		"api.Handler": {"Interfaces belong to the core: :api.Handler is :Interface, and :api.Handler has no :definedIn to anything that is :Core"},
+		"api.Remote":  {"A store lives in the core: ", "ObjectHasValue(:implements :core.Store)"},
+		"core.Bare":   {"Every type says what it is for: :core.Bare is :Type, and :core.Bare is not :Documented", "Nothing bare holds a thing: :core.Bare :holds :core.Thing"},
+	} {
+		for _, w := range want {
+			if !strings.Contains(said[subject], w) {
+				t.Errorf("%s: message lacks %q:\n%s", subject, w, said[subject])
+			}
+		}
+	}
+}
+
+// Only the code says what its types are, and a type the invariants name has to
+// be one the module exports.
+func TestInvariantsOwnNoFactsAboutTypes(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	o := writeModule(t, shopFiles(map[string]string{"core/core.go": invCoreTypes}))
+	c := check(t, o, shopRules+`
+		ClassAssertion(:Documented :core.Bare)
+		ObjectPropertyAssertion(:implements :core.Thing :core.Store)
+		ObjectPropertyAssertion(:definedIn :core.Thing :package.example.com.shop.api)
+		SubClassOf(ObjectOneOf(:core.Thng) :Documented)
+	`)
+	var got []string
+	for _, f := range c.Findings {
+		_, local, _ := strings.Cut(string(f.Subject), "#")
+		got = append(got, strings.TrimSpace(f.Rule+" "+local))
+	}
+	want := "unknown-type core.Thng, unsupported-invariant, unsupported-invariant, unsupported-invariant, invariant-violated core.Thng"
+	// The rule about the misspelled type also fails, for the type nobody has.
+	slices.Sort(got)
+	wantSorted := strings.Split(want, ", ")
+	slices.Sort(wantSorted)
+	if !slices.Equal(got, wantSorted) {
+		t.Errorf("findings = %q\nwant       %q", got, wantSorted)
+		for _, f := range c.Findings {
+			t.Log(f)
+		}
+	}
+
+	// A group of the invariants' own can hold types, and a rule can be about it.
+	wantFindings(t, check(t, o, shopRules+`
+		ClassAssertion(:Value :core.Thing)
+		ClassAssertion(:Value :core.Bare)
+		SubClassOf(Annotation(rdfs:comment "A value is documented") :Value :Documented)
+	`).Findings, "invariant-violated core.Bare")
+
+	// A plan says what kind a type is, and where it lives, with an annotation.
+	// Here those are facts, held to with a rule, and the annotation would be
+	// checked by nothing: it is refused, with the rule to write instead.
+	c = check(t, o, shopRules+`
+		AnnotationAssertion(:kind :core.Store "struct")
+		AnnotationAssertion(:definedIn :core.Store :package.example.com.shop.api)
+		AnnotationAssertion(:name :package.example.com.shop.core "kernel")
+	`)
+	wantFindings(t, c.Findings, "unsupported-invariant ", "unsupported-invariant ", "unsupported-invariant ")
+	for _, f := range c.Findings {
+		if !strings.Contains(f.Message, "not checked: ") || !strings.Contains(f.Message, "a fact of the code") || f.Axiom == nil {
+			t.Errorf("message = %q", f.Message)
+		}
+	}
+	// The rules it points to say the same thing, and are checked.
+	wantFindings(t, check(t, o, shopRules+`
+		SubClassOf(ObjectOneOf(:core.Store) :Struct)
+		SubClassOf(ObjectOneOf(:core.Store) ObjectHasValue(:definedIn :package.example.com.shop.api))
+	`).Findings, "invariant-violated core.Store", "invariant-violated core.Store")
+}
+
+// The facts are there to read: each type an individual under its own name,
+// beside the packages and the invariants' groups.
+func TestFacts(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	o := writeModule(t, shopFiles(map[string]string{"core/core.go": invCoreTypes, "api/api.go": invAPITypes}))
+	facts := Facts(invariants(t, shopRules), o, known(t, o)).Functional()
+	for _, want := range []string{
+		"ClassAssertion(:Package :package.example.com.shop.core)",
+		"ClassAssertion(:Documented :package.example.com.shop.core)",
+		"ClassAssertion(:Core :package.example.com.shop.core)",
+		"ObjectPropertyAssertion(:imports :package.example.com.shop.api :package.net.http)",
+		"ClassAssertion(:Type :core.Bare)",
+		"ClassAssertion(:Struct :core.Thing)",
+		"ClassAssertion(:Interface :core.Store)",
+		"ClassAssertion(:Documented :core.Thing)",
+		"ObjectPropertyAssertion(:definedIn :core.Memory :package.example.com.shop.core)",
+		"ObjectPropertyAssertion(:implements :core.Memory :core.Store)",
+		"ObjectPropertyAssertion(:implements :api.Remote :core.Store)",
+		"ObjectPropertyAssertion(:holds :core.Memory :core.Thing)",
+	} {
+		if !strings.Contains(facts, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	for _, unwanted := range []string{"ClassAssertion(:Documented :core.Bare)", "SubClassOf(", "DisjointClasses(", ":dependsOn"} {
+		if strings.Contains(facts, unwanted) {
+			t.Errorf("the facts hold %s, which is no fact of the code or group of the invariants", unwanted)
+		}
+	}
+	if _, err := owl.ParseFunctionalString(facts); err != nil {
+		t.Errorf("the facts do not parse back: %v", err)
+	}
+	if t.Failed() {
+		t.Log(facts)
+	}
+}
+
+// What the shop offers, for the invariants to hold it to.
+const invCoreOffers = invCore + `
+// Open opens a store.
+func Open(name string) (Store, error) { return nil, nil }
+
+// Memory keeps things in memory.
+type Memory struct{}
+
+// Get gets a thing.
+func (Memory) Get(id int) (Thing, error) { return Thing{}, nil }
+
+// Len counts them.
+func (*Memory) Len() int { return 0 }
+`
+
+// The invariants say what the code offers, by signature: a function of a
+// package, a method of a type. The code has to have each, and may have more.
+func TestInvariantsCapabilities(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	o := writeModule(t, shopFiles(map[string]string{"core/core.go": invCoreOffers}))
+	const core = ":package.example.com.shop.core"
+	offers := shopRules + `
+		AnnotationAssertion(:func ` + core + ` "Open(name string) (Store, error)")
+		AnnotationAssertion(:method :core.Memory "Len() int")
+	`
+	c := check(t, o, offers)
+	wantFindings(t, c.Findings)
+	if c.Checked != 4 {
+		t.Errorf("checked = %d, want 4: two rules, a function and a method", c.Checked)
+	}
+
+	for _, tc := range []struct {
+		name, axioms string
+		want         []string
+	}{
+		{"a function the code lacks", `AnnotationAssertion(:func ` + core + ` "Close() error")`,
+			[]string{"missing-func package.example.com.shop.core"}},
+		{"a function with another signature", `AnnotationAssertion(:func ` + core + ` "Open(name string) Store")`,
+			[]string{"func-mismatch package.example.com.shop.core"}},
+		{"a method the type lacks", `AnnotationAssertion(:method :core.Memory "Cap() int")`,
+			[]string{"missing-method core.Memory"}},
+		{"a method with another signature", `AnnotationAssertion(:method :core.Memory "Get(id string) (Thing, error)")`,
+			[]string{"method-mismatch core.Memory"}},
+		{"not a signature", `AnnotationAssertion(:func ` + core + ` "Open(")`,
+			[]string{"malformed-func package.example.com.shop.core"}},
+		{"a package nobody has", `AnnotationAssertion(:func :package.example.com.shop.ghost "Boo()")`,
+			[]string{"missing-package package.example.com.shop.ghost"}},
+		{"a package from outside", `AnnotationAssertion(:func :package.net.http "Get(url string)")`,
+			[]string{"missing-package package.net.http"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			wantFindings(t, check(t, o, offers+tc.axioms).Findings, tc.want...)
+		})
+	}
+}
+
+// Given to a group, a capability is asked of every package or type in it.
+func TestInvariantsCapabilitiesOfAGroup(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	version := "\n// Version says which version this is.\nfunc Version() string { return \"1\" }\n"
+	o := writeModule(t, shopFiles(map[string]string{"core/core.go": invCoreOffers + version}))
+
+	// Both core and billing are :Core, and only core says its version.
+	wantFindings(t, check(t, o, shopRules+`AnnotationAssertion(:func :Core "Version() string")`).Findings,
+		"missing-func package.example.com.shop.billing")
+	withBilling := writeModule(t, shopFiles(map[string]string{"core/core.go": invCoreOffers + version, "billing/billing.go": invBilling + version}))
+	c := check(t, withBilling, shopRules+`AnnotationAssertion(:func :Core "Version() string")`)
+	wantFindings(t, c.Findings)
+	if c.Checked != 4 {
+		t.Errorf("checked = %d, want 4: two rules, and the function in two packages", c.Checked)
+	}
+
+	// A group of types: everything that keeps things can get one. A bare type
+	// in the signature is each member's own package's.
+	keepers := shopRules + `
+		ClassAssertion(:Keeper :core.Memory)
+		ClassAssertion(:Keeper :core.Thing)
+		AnnotationAssertion(:method :Keeper "Get(id int) (Thing, error)")
+	`
+	wantFindings(t, check(t, o, keepers).Findings, "missing-method core.Thing")
+
+	// A group's members have to be what the capability is a capability of.
+	wantFindings(t, check(t, o, shopRules+`AnnotationAssertion(:method :Core "Get(id int) (Thing, error)")`).Findings,
+		"unsupported-invariant package.example.com.shop.billing",
+		"unsupported-invariant package.example.com.shop.core",
+	)
+	// And a name that is neither a type nor a group with anything in it is told so.
+	wantFindings(t, check(t, o, shopRules+`AnnotationAssertion(:method :Keepr "Get(id int) (Thing, error)")`).Findings,
+		"missing-type Keepr")
+}
+
+// A package or a type put in :Fixed offers exactly what the invariants list.
+func TestInvariantsFixed(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	const core = ":package.example.com.shop.core"
+	fixed := shopRules + `
+		ClassAssertion(:Fixed ` + core + `)
+		AnnotationAssertion(:func ` + core + ` "Open(name string) (Store, error)")
+		ClassAssertion(:Fixed :core.Memory)
+		AnnotationAssertion(:method :core.Memory "Get(id int) (Thing, error)")
+	`
+	// Len is one method too many, and Open is all the package may offer.
+	o := writeModule(t, shopFiles(map[string]string{"core/core.go": invCoreOffers}))
+	c := check(t, o, fixed)
+	wantFindings(t, c.Findings, "unplanned-method core.Memory")
+	if want := "the invariants fix the methods of :core.Memory, and the code adds Len() int"; !strings.Contains(c.Findings[0].Message, want) {
+		t.Errorf("message lacks %q:\n%s", want, c.Findings[0].Message)
+	}
+
+	grown := writeModule(t, shopFiles(map[string]string{"core/core.go": strings.Replace(invCoreOffers,
+		"// Len counts them.\nfunc (*Memory) Len() int { return 0 }\n", "// Close closes it.\nfunc Close() error { return nil }\n", 1)}))
+	c = check(t, grown, fixed)
+	wantFindings(t, c.Findings, "unplanned-func package.example.com.shop.core")
+	if want := "the invariants fix the functions of " + core + ", and the code adds Close() error"; !strings.Contains(c.Findings[0].Message, want) {
+		t.Errorf("message lacks %q:\n%s", want, c.Findings[0].Message)
+	}
+
+	// Fixed with nothing listed offers nothing: the api exports no function,
+	// and the core does.
+	wantFindings(t, check(t, o, shopRules+"ClassAssertion(:Fixed :package.example.com.shop.api)").Findings)
+	wantFindings(t, check(t, o, shopRules+"ClassAssertion(:Fixed "+core+")").Findings,
+		"unplanned-func package.example.com.shop.core")
+
+	// Only what the module has can be fixed.
+	wantFindings(t, check(t, o, shopRules+"ClassAssertion(:Fixed :package.os)").Findings, "unsupported-invariant package.os")
+}
+
+// A plan is held to what the invariants say the code offers before it is
+// built, and may restate what is there in its own words.
+func TestReviewInvariantsCapabilities(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	before := writeModule(t, shopFiles(map[string]string{"core/core.go": invCoreOffers}))
+	ks := known(t, before)
+	const core = ":package.example.com.shop.core"
+	inv := invariants(t, shopRules+`
+		ClassAssertion(:Fixed `+core+`)
+		AnnotationAssertion(:func `+core+` "Open(name string) (Store, error)")
+		AnnotationAssertion(:method :core.Store "Get(id int) (Thing, error)")
+	`)
+
+	same := shopPlan(t, `
+		AnnotationAssertion(:func `+core+` "Open(n string) (s Store, err error)")
+		AnnotationAssertion(:method :core.Store "Get(i int) (Thing, error)")
+	`)
+	wantFindings(t, ReviewInvariants(inv, same, before, ks).Findings)
+
+	// A function added to a fixed package, a method added to a fixed
+	// interface, and a method of it changed.
+	breaks := shopPlan(t, `
+		AnnotationAssertion(:func `+core+` "Close() error")
+		AnnotationAssertion(:method :core.Store "Get(id string) (Thing, error)")
+		AnnotationAssertion(:method :core.Store "Put(t Thing) error")
+	`)
+	wantFindings(t, ReviewInvariants(inv, breaks, before, ks).Findings,
+		"method-mismatch core.Store",
+		"unplanned-func package.example.com.shop.core",
+		"unplanned-method core.Store",
+	)
+
+	// A method the plan writes that is no signature cannot be built, so it
+	// takes nothing's place. The review of the plan is what reports it.
+	malformed := shopPlan(t, `AnnotationAssertion(:method :core.Store "Get(")`)
+	wantFindings(t, ReviewInvariants(inv, malformed, before, ks).Findings)
+}
+
+// A plan is checked against the rules about types too: a planned type is read
+// as though it were built, with what the plan says about it.
+func TestReviewInvariantsAboutTypes(t *testing.T) {
+	t.Setenv("GOWORK", "off")
+	before := writeModule(t, shopFiles(nil))
+	ks := known(t, before)
+	inv := invariants(t, shopRules+`
+		SubClassOf(Annotation(rdfs:comment "Interfaces belong to the core") :Interface ObjectSomeValuesFrom(:definedIn :Core))
+		SubClassOf(Annotation(rdfs:comment "What the core defines says what it is for") ObjectSomeValuesFrom(:definedIn :Core) :Documented)
+	`)
+
+	plan := shopPlan(t, `
+		Declaration(Class(:api.Handler))
+		AnnotationAssertion(:kind :api.Handler "interface")
+		AnnotationAssertion(:definedIn :api.Handler :package.example.com.shop.api)
+		Declaration(Class(:core.Shelf))
+		AnnotationAssertion(:definedIn :core.Shelf :package.example.com.shop.core)
+	`)
+	wantFindings(t, ReviewInvariants(inv, plan, before, ks).Findings,
+		"invariant-violated api.Handler",
+		"invariant-violated core.Shelf",
+	)
+
+	kept := shopPlan(t, `
+		Declaration(Class(:core.Shelf))
+		AnnotationAssertion(rdfs:comment :core.Shelf "Shelf is where things are kept.")
+		AnnotationAssertion(:definedIn :core.Shelf :package.example.com.shop.core)
+	`)
+	wantFindings(t, ReviewInvariants(inv, kept, before, ks).Findings)
+
+	// A class in a plan that is not named as a type is, such as a group put in
+	// the wrong file, is not taken for a type nobody documented.
+	documented := invariants(t, shopRules+`SubClassOf(Annotation(rdfs:comment "Every type says what it is for") :Type :Documented)`)
+	stray := shopPlan(t, `
+		Declaration(Class(:Sellable))
+		ClassAssertion(:Sellable :package.example.com.shop.core)
+	`)
+	wantFindings(t, ReviewInvariants(documented, stray, before, ks).Findings)
 }

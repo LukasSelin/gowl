@@ -10,7 +10,8 @@
 // The mapping is deliberately small:
 //
 //   - every exported named Go type becomes an OWL class, labelled with its
-//     qualified Go name and commented with the first sentence of its doc;
+//     qualified Go name and commented with the first sentence of its doc, as
+//     go doc shows it: its own, or else that of the declaration group it is in;
 //   - a type that satisfies an interface of this module is a SubClassOf that
 //     interface — so owl.SubClassOf ⊑ owl.Axiom ⊑ owl.Node, and gowl's type
 //     hierarchy for OWL is itself an OWL class hierarchy;
@@ -24,8 +25,14 @@
 //     individual of :ExternalPackage; only the module's own imports are
 //     recorded, not what those packages import in turn;
 //   - every class is tied to its package with the annotation :definedIn, and
-//     an interface lists the methods it declares with the annotation :method,
-//     as Name(parameter types) result types.
+//     says what it is underneath, a struct, an interface or something else,
+//     with the annotation :kind;
+//   - what the code offers is listed as Name(parameter types) result types:
+//     the methods of a type with the annotation :method, and the functions a
+//     package exports with the annotation :func, on the package. An interface
+//     lists every method it declares, and any other type the exported ones it
+//     declares itself. The package's own name, which those signatures qualify
+//     its types with, is the annotation :name.
 //
 // Only SubClassOf edges that are not implied by others are written, so the
 // class hierarchy reads as the direct one.
@@ -66,6 +73,9 @@ const (
 	vocabImports         = "imports"
 	vocabMethod          = "method"
 	vocabDefinedIn       = "definedIn"
+	vocabFunc            = "func"
+	vocabKind            = "kind"
+	vocabName            = "name"
 )
 
 // packageLocalName is the local name of the individual standing for the
@@ -309,14 +319,19 @@ func Build(root string) (*owl.Ontology, error) {
 	// No range: the package imported is a :Package or an :ExternalPackage.
 	o.DefineObjectProperty(imports).Domain(pkgClass).Irreflexive().
 		Label("imports").Comment("The subject package imports the object package directly. The object is a :Package or an :ExternalPackage.")
-	definedIn := o.AnnotationProperty(":" + vocabDefinedIn)
-	o.Declare(definedIn)
-	o.Add(owl.AnnotationAssertion{Property: owl.RDFSLabel, Subject: definedIn.IRI(), Value: owl.Str("defined in")})
-	o.Add(owl.AnnotationAssertion{Property: owl.RDFSComment, Subject: definedIn.IRI(), Value: owl.Str("The package whose source declares the subject Go type.")})
-	method := o.AnnotationProperty(":" + vocabMethod)
-	o.Declare(method)
-	o.Add(owl.AnnotationAssertion{Property: owl.RDFSLabel, Subject: method.IRI(), Value: owl.Str("method")})
-	o.Add(owl.AnnotationAssertion{Property: owl.RDFSComment, Subject: method.IRI(), Value: owl.Str("A method the subject Go interface declares, as Name(parameter types) result types.")})
+	// The words that describe a term rather than relate two of them.
+	describe := func(name, label, comment string) owl.AnnotationProperty {
+		p := o.AnnotationProperty(":" + name)
+		o.Declare(p)
+		o.Add(owl.AnnotationAssertion{Property: owl.RDFSLabel, Subject: p.IRI(), Value: owl.Str(label)})
+		o.Add(owl.AnnotationAssertion{Property: owl.RDFSComment, Subject: p.IRI(), Value: owl.Str(comment)})
+		return p
+	}
+	definedIn := describe(vocabDefinedIn, "defined in", "The package whose source declares the subject Go type.")
+	method := describe(vocabMethod, "method", "A method the subject Go type declares, as Name(parameter types) result types: every method of an interface, and the exported methods of any other type.")
+	function := describe(vocabFunc, "function", "A function the subject Go package exports, as Name(parameter types) result types.")
+	kind := describe(vocabKind, "kind", "What the subject Go type is underneath: struct, interface, basic, slice, array, map, chan, func or pointer.")
+	pkgName := describe(vocabName, "name", "The name the subject Go package declares, which qualifies what it exports: owl in owl.Class.")
 
 	pkgIndividual := func(path string) owl.NamedIndividual {
 		return o.Individual(":" + packageLocalName(path))
@@ -346,6 +361,11 @@ func Build(root string) (*owl.Ontology, error) {
 		sort.Strings(deps)
 		for _, d := range deps {
 			b.Fact(imports, pkgIndividual(d))
+		}
+		// What the package is called where it is used, and what it offers.
+		o.Add(owl.AnnotationAssertion{Property: pkgName, Subject: ind.IRI(), Value: owl.Str(p.types.Name())})
+		for _, sig := range packageFuncs(p.types) {
+			o.Add(owl.AnnotationAssertion{Property: function, Subject: ind.IRI(), Value: owl.Str(sig)})
 		}
 	}
 	for path := range external {
@@ -382,6 +402,7 @@ func Build(root string) (*owl.Ontology, error) {
 			b.Comment(ti.doc)
 		}
 		b.Annotate(definedIn, pkgIndividual(ti.pkg).IRI())
+		b.Annotate(kind, owl.Str(typeKind(ti.obj.Type())))
 		builders[ti] = b
 	}
 
@@ -401,9 +422,14 @@ func Build(root string) (*owl.Ontology, error) {
 		}
 	}
 
-	// An interface's methods are its contract, so each is written down.
+	// An interface's methods are its contract, and any other type's exported
+	// methods are what it offers, so each is written down.
 	for _, t := range all {
-		for _, sig := range interfaceMethods(t.obj, byObj) {
+		sigs := interfaceMethods(t.obj, byObj)
+		if sigs == nil {
+			sigs = declaredMethods(t.obj)
+		}
+		for _, sig := range sigs {
 			builders[t].Annotate(method, owl.Str(sig))
 		}
 	}
@@ -533,7 +559,9 @@ func fieldDatatype(t types.Type) (owl.Datatype, bool) {
 	return "", false
 }
 
-// typeDocs returns the first sentence of each type's doc comment, keyed by name.
+// typeDocs returns the first sentence of each type's doc comment, keyed by
+// name. A type declared in a group with no comment of its own has the group's,
+// which is what go doc shows for it.
 func typeDocs(p *pkg) map[string]string {
 	out := map[string]string{}
 	for _, f := range p.files {
@@ -545,10 +573,10 @@ func typeDocs(p *pkg) map[string]string {
 			for _, spec := range gd.Specs {
 				ts := spec.(*ast.TypeSpec)
 				text := ts.Doc.Text()
-				if text == "" && len(gd.Specs) == 1 {
+				if text == "" {
 					text = gd.Doc.Text()
 				}
-				if s := firstSentence(text); s != "" {
+				if s := firstSentence(text, false); s != "" {
 					out[ts.Name.Name] = s
 				}
 			}
@@ -557,17 +585,35 @@ func typeDocs(p *pkg) map[string]string {
 	return out
 }
 
-// synopsis is the first sentence of a package's doc comment.
+// synopsis is the first sentence of a package's doc comment: of the first of
+// its files that has one. A comment that is all directives, such as
+// //go:generate above a package clause, has no text and is not one.
 func synopsis(p *pkg) string {
 	for _, f := range p.files {
-		if f.Doc != nil {
-			return firstSentence(f.Doc.Text())
+		if s := firstSentence(f.Doc.Text(), true); s != "" {
+			return s
 		}
 	}
 	return ""
 }
 
-func firstSentence(text string) string {
+// firstSentence is the first sentence of a doc comment, as go doc lists it.
+//
+// go/doc says nothing for a comment that begins the way a licence header
+// does, with "copyright", "all rights" or "author", because such a header is
+// often what sits above a package clause. A comment that only happens to
+// begin so, as the one on a type called Author does, is documentation all the
+// same, so its first line stands in. header says the comment is where a
+// licence header could be, and then one that begins with "copyright" or "all
+// rights" is still taken for one.
+func firstSentence(text string, header bool) string {
 	var pr doc.Package
-	return strings.TrimSpace(pr.Synopsis(text))
+	if s := strings.TrimSpace(pr.Synopsis(text)); s != "" {
+		return s
+	}
+	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
+	if lower := strings.ToLower(line); header && (strings.HasPrefix(lower, "copyright") || strings.HasPrefix(lower, "all rights")) {
+		return ""
+	}
+	return strings.TrimSpace(line)
 }
