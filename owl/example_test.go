@@ -3,7 +3,7 @@ package owl_test
 import (
 	"fmt"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // Building a small ontology with the fluent DSL and rendering it as OWL 2

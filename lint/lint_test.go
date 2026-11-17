@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // parse builds an ontology from axioms with the default prefix bound.

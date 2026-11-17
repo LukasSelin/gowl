@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 func TestRoundTripDocument(t *testing.T) {

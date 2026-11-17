@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	"gowl/el"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/el"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 func cmdClassify(args []string) int {

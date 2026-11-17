@@ -3,7 +3,7 @@ package owl_test
 import (
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 func cls(name string) owl.Class { return owl.Class("http://example.org/" + name) }

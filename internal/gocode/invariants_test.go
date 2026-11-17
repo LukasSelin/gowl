@@ -5,8 +5,8 @@ import (
 	"sync"
 	"testing"
 
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The shop: core keeps things, api serves them over HTTP, billing bills.

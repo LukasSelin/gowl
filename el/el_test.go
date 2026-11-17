@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/el"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/el"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // classify parses a document body and classifies it. The prefix header is

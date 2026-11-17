@@ -49,7 +49,7 @@ import (
 	"sort"
 	"strings"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // Report is what checking facts against constraints found: what was checked,

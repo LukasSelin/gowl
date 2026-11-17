@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 var update = flag.Bool("update", false, "rewrite the .golden files in testdata")

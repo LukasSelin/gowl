@@ -3,7 +3,7 @@ package owl_test
 import (
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 func TestIndexIsCachedAndInvalidated(t *testing.T) {

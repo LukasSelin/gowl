@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 func mustParse(t *testing.T, src string) *owl.Ontology {

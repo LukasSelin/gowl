@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // tinyModule writes a one-package Go module to a temp directory and returns its

@@ -4,8 +4,8 @@ import (
 	"slices"
 	"testing"
 
-	"gowl/el"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/el"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The fixture under testdata is a miniature of k8s.io/api and apimachinery's

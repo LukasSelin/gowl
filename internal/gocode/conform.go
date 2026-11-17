@@ -5,8 +5,8 @@ import (
 	"slices"
 	"strings"
 
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The checks [Conform] runs. The missing ones read the plan and look in the

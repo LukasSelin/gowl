@@ -6,10 +6,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"gowl/el"
-	"gowl/internal/gocode"
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/el"
+	"github.com/LukasSelin/gowl/internal/gocode"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The documents in this file are the machine-readable contract of the CLI:

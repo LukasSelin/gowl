@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // pizza builds a small ontology exercising the DSL end to end.

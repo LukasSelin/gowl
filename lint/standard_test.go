@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // reference stands in for a published vocabulary. The rule takes any

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"gowl/internal/gocode"
+	"github.com/LukasSelin/gowl/internal/gocode"
 )
 
 // cmdGoCode describes a Go module's code as an ontology: exported types as

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The tests in this file check properties that hold for every model, rather

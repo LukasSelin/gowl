@@ -5,8 +5,8 @@ import (
 	"sort"
 	"strings"
 
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The checks [Compare] runs. Both look only at what a change did. A module's
