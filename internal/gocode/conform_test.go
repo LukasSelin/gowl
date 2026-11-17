@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 const shopPrefixes = `Prefix(:=<https://example.com/shop#>)

@@ -5,9 +5,9 @@ import (
 	"slices"
 	"strings"
 
-	"gowl/internal/icv"
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/internal/icv"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The checks [CheckInvariants] runs, besides the method and function checks it
@@ -325,12 +325,12 @@ func Facts(invariants, module *owl.Ontology, known []owl.NamedIndividual) *owl.O
 // defined, what it implements and what its fields hold, and nothing else can:
 // of what [Build] wrote, those facts alone are kept, each type as an
 // individual under its own name. The invariants add facts of their own about
-// words the code does not use, such as ClassAssertion(:Library
-// :package.gowl.owl) to put a package in a group, and may declare a package
-// the module does not depend on as an :ExternalPackage, so that a rule can
-// forbid it. Every other logical axiom of theirs is a rule, checked over
-// those facts as they stand, under the closed-world assumption: see
-// [icv.Validate] for which axioms that covers.
+// words the code does not use, such as
+// ClassAssertion(:Library :package.github.com.LukasSelin.gowl.owl) to put a
+// package in a group, and may declare a package the module does not depend on
+// as an :ExternalPackage, so that a rule can forbid it. Every other logical
+// axiom of theirs is a rule, checked over those facts as they stand, under the
+// closed-world assumption: see [icv.Validate] for which axioms that covers.
 //
 // The invariants also say what the code offers, by signature. A :func on a
 // package is a function it exports, and a :method on a type a method it has:

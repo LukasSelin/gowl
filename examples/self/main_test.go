@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/internal/gocode"
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/internal/gocode"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The committed gowl.ofn must be what the generator produces from the code as

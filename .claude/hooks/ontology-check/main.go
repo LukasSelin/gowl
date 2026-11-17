@@ -30,10 +30,10 @@ import (
 	"sort"
 	"strings"
 
-	"gowl/el"
-	"gowl/lint"
-	"gowl/owl"
-	"gowl/vocab"
+	"github.com/LukasSelin/gowl/el"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
+	"github.com/LukasSelin/gowl/vocab"
 )
 
 // maxListed caps every list in the report, so one sweeping edit cannot flood

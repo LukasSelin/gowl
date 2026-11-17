@@ -1,6 +1,6 @@
 package el
 
-import "gowl/owl"
+import "github.com/LukasSelin/gowl/owl"
 
 // The completion rules. Each derives a new fact from facts already derived and
 // one normalized axiom, and nothing is ever retracted, so the fact set only

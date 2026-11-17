@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 const prefixes = `Prefix(:=<https://example.com/m#>)

@@ -45,11 +45,11 @@ additions point at. Names are the ones `gowl gocode` writes:
 | field holding a basic type: `Count int` | `Declaration(DataProperty(:store.Holding.Count))`, `DataPropertyDomain(:store.Holding.Count :store.Holding)`, `DataPropertyRange(:store.Holding.Count xsd:integer)` |
 | satisfies module interface `store.Priced` | `SubClassOf(:store.Holding :store.Priced)` |
 | method `Price(item Item) (int, error)` on type `store.Priced` | `AnnotationAssertion(:method :store.Priced "Price(item Item) (int, error)")` |
-| exported function `Total(hs []Holding) int` in package `gowl/internal/store` | `AnnotationAssertion(:func :package.gowl.internal.store "Total(hs []Holding) int")` |
+| exported function `Total(hs []Holding) int` in package `github.com/LukasSelin/gowl/internal/store` | `AnnotationAssertion(:func :package.github.com.LukasSelin.gowl.internal.store "Total(hs []Holding) int")` |
 | the type is an interface (or `"struct"`) | `AnnotationAssertion(:kind :store.Priced "interface")` |
-| the type is declared in package `gowl/internal/store` | `AnnotationAssertion(:definedIn :store.Holding :package.gowl.internal.store)` |
-| package `gowl/internal/store` | `ClassAssertion(:Package :package.gowl.internal.store)` |
-| that package imports `gowl/owl` | `ObjectPropertyAssertion(:imports :package.gowl.internal.store :package.gowl.owl)` |
+| the type is declared in package `github.com/LukasSelin/gowl/internal/store` | `AnnotationAssertion(:definedIn :store.Holding :package.github.com.LukasSelin.gowl.internal.store)` |
+| package `github.com/LukasSelin/gowl/internal/store` | `ClassAssertion(:Package :package.github.com.LukasSelin.gowl.internal.store)` |
+| that package imports `github.com/LukasSelin/gowl/owl` | `ObjectPropertyAssertion(:imports :package.github.com.LukasSelin.gowl.internal.store :package.github.com.LukasSelin.gowl.owl)` |
 
 Strings are `xsd:string`, booleans `xsd:boolean`, integers `xsd:integer` and
 floats `xsd:double`. A method or a function is written as Go writes it; parameter

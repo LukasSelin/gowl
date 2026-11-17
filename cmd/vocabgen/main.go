@@ -29,10 +29,10 @@ import (
 	"strings"
 	"time"
 
-	"gowl/internal/rdf"
-	"gowl/internal/rdfowl"
-	"gowl/internal/vocabgen"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/internal/rdf"
+	"github.com/LukasSelin/gowl/internal/rdfowl"
+	"github.com/LukasSelin/gowl/internal/vocabgen"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 func main() {

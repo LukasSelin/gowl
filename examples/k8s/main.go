@@ -63,8 +63,8 @@ import (
 	"strconv"
 	"strings"
 
-	"gowl/el"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/el"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 const (

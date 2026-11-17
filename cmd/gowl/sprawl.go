@@ -13,9 +13,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gowl/internal/gocode"
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/internal/gocode"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // cmdSprawl compares a Go module's types with the same module at a base

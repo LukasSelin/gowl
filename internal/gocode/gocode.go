@@ -56,13 +56,16 @@ import (
 	"sort"
 	"strings"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
-// selfIRI names gowl's own description. gowl's module path is not a URL the way
-// a published module's is, so it keeps the IRI it was first written with; any
-// other module is named by its module path under https://.
-const selfIRI = "https://github.com/LukasSelin/gowl/self"
+// selfModule is gowl's own module path. Its description keeps the IRI it was
+// first written with, selfIRI, so that the design plans written against it
+// stay valid; any other module is named by its module path under https://.
+const (
+	selfModule = "github.com/LukasSelin/gowl"
+	selfIRI    = "https://" + selfModule + "/self"
+)
 
 // The local names of the words Build talks about code with, in the module's
 // namespace. They describe the code rather than being part of it, so the
@@ -79,8 +82,9 @@ const (
 )
 
 // packageLocalName is the local name of the individual standing for the
-// package with the given import path: gowl/internal/gocode becomes
-// package.gowl.internal.gocode. The mapping loses where the slashes were, so
+// package with the given import path: github.com/LukasSelin/gowl/internal/gocode
+// becomes package.github.com.LukasSelin.gowl.internal.gocode. The mapping loses
+// where the slashes were, so
 // a/b.c and a.b/c share a name; Go module paths make that rare in practice.
 func packageLocalName(path string) string {
 	return "package." + strings.ReplaceAll(path, "/", ".")
@@ -88,7 +92,7 @@ func packageLocalName(path string) string {
 
 // pkg is one type-checked package of the module.
 type pkg struct {
-	path  string // import path, e.g. gowl/owl
+	path  string // import path, e.g. github.com/LukasSelin/gowl/owl
 	files []*ast.File
 	types *types.Package
 }
@@ -300,7 +304,7 @@ func Build(root string) (*owl.Ontology, error) {
 
 	iri := owl.IRI(selfIRI)
 	about := "gowl's own Go code, described as an OWL 2 ontology by examples/self."
-	if module != "gowl" {
+	if module != selfModule {
 		iri = owl.IRI("https://" + module)
 		about = module + "'s Go code, described as an OWL 2 ontology by gowl gocode."
 	}

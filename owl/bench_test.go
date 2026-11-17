@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // GenerateOntology builds a synthetic ontology with nClasses named classes

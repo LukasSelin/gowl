@@ -35,7 +35,7 @@ Ontology(<https://github.com/LukasSelin/gowl/design/capabilities>
     AnnotationAssertion(rdfs:comment :name "The name the subject Go package declares, which qualifies what it exports: owl in owl.Class.")
 
     # The facts the invariants are checked against, for a person to read.
-    Declaration(NamedIndividual(:package.gowl.internal.gocode))
-    ClassAssertion(:Package :package.gowl.internal.gocode)
-    AnnotationAssertion(:func :package.gowl.internal.gocode "Facts(invariants, module *owl.Ontology, known []owl.NamedIndividual) *owl.Ontology")
+    Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.internal.gocode))
+    ClassAssertion(:Package :package.github.com.LukasSelin.gowl.internal.gocode)
+    AnnotationAssertion(:func :package.github.com.LukasSelin.gowl.internal.gocode "Facts(invariants, module *owl.Ontology, known []owl.NamedIndividual) *owl.Ontology")
 )

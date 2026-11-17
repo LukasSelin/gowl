@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"gowl/el"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/el"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The tests in this file check properties that must hold for every ontology,

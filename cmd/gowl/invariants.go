@@ -9,9 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"gowl/internal/gocode"
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/internal/gocode"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // invariantsFile is where, under design/, a module keeps the rules its code

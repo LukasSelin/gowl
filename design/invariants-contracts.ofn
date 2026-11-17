@@ -70,8 +70,8 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants-contracts>
     DataPropertyRange(:icv.Violation.Reason xsd:string)
 
     # The new package, and where it sits.
-    Declaration(NamedIndividual(:package.gowl.internal.icv))
-    ClassAssertion(:Package :package.gowl.internal.icv)
-    ObjectPropertyAssertion(:imports :package.gowl.internal.icv :package.gowl.owl)
-    ObjectPropertyAssertion(:imports :package.gowl.internal.gocode :package.gowl.internal.icv)
+    Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.internal.icv))
+    ClassAssertion(:Package :package.github.com.LukasSelin.gowl.internal.icv)
+    ObjectPropertyAssertion(:imports :package.github.com.LukasSelin.gowl.internal.icv :package.github.com.LukasSelin.gowl.owl)
+    ObjectPropertyAssertion(:imports :package.github.com.LukasSelin.gowl.internal.gocode :package.github.com.LukasSelin.gowl.internal.icv)
 )

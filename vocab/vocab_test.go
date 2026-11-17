@@ -4,14 +4,14 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
-	"gowl/vocab"
-	"gowl/vocab/dcterms"
-	"gowl/vocab/foaf"
-	"gowl/vocab/prov"
-	"gowl/vocab/schema"
-	"gowl/vocab/skos"
-	"gowl/vocab/time"
+	"github.com/LukasSelin/gowl/owl"
+	"github.com/LukasSelin/gowl/vocab"
+	"github.com/LukasSelin/gowl/vocab/dcterms"
+	"github.com/LukasSelin/gowl/vocab/foaf"
+	"github.com/LukasSelin/gowl/vocab/prov"
+	"github.com/LukasSelin/gowl/vocab/schema"
+	"github.com/LukasSelin/gowl/vocab/skos"
+	"github.com/LukasSelin/gowl/vocab/time"
 )
 
 // Every generated .ofn file must parse, and must actually say something. This

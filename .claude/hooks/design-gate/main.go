@@ -25,7 +25,7 @@ import (
 	"sort"
 	"strings"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 type hookInput struct {

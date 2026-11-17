@@ -11,7 +11,7 @@ import (
 	"sort"
 	"strings"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // Severity ranks a finding. Only Error is meant to fail a build.

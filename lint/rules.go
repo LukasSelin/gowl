@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // Default returns the built-in rules. The set is deliberately conservative:

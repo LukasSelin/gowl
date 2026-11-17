@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // profileDoc wraps axioms in a minimal document with the default prefix bound.
