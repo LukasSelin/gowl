@@ -17,12 +17,15 @@ import (
 	"github.com/LukasSelin/gowl/internal/gocode"
 )
 
+// pkgPrefix is the name gowl's own packages are abbreviated under
+const pkgPrefix = "gowl"
+
 func main() {
 	root := "."
 	if len(os.Args) > 1 {
 		root = os.Args[1]
 	}
-	o, err := gocode.Build(root)
+	o, err := gocode.BuildPrefixed(root, pkgPrefix)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "self:", err)
 		os.Exit(1)

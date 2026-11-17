@@ -491,7 +491,7 @@ gowl profile [-v] [-json] file.ofn
 gowl classify [-axioms] [-explain "sub super"] [-unsatisfiable] [-fail-on-incoherent] [-json] file.ofn
 gowl fmt     [-w] [-canonical] file.ofn
 gowl stats   [-json] file.ofn
-gowl gocode  [-o file.ofn] [module-dir]
+gowl gocode  [-prefix name] [-o file.ofn] [module-dir]
 gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
 gowl plan    [-base ref] [-invariants file] [-fail-on severity] [-json] plan.ofn [module-dir]
 gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]

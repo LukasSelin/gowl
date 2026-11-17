@@ -257,9 +257,17 @@ func KnownPackages(root string) ([]string, error) {
 	return out, nil
 }
 
-// Build type-checks the module rooted at root — the directory holding its
-// go.mod — and returns the ontology that describes it.
+// Convenience function to call BuildPrefixed without a prefix to shorten
+// package IRIs.
 func Build(root string) (*owl.Ontology, error) {
+	return BuildPrefixed(root, "")
+}
+
+// BuildPrefixed type-checks the module rooted at root — the directory holding
+// its go.mod — and returns the ontology that describes it.
+// When pkgPrefix is not empty, then this sets the prefix used to shorten
+// the IRIs used for the package to prefixed CURIEs instead.
+func BuildPrefixed(root string, pkgPrefix string) (*owl.Ontology, error) {
 	module, err := modulePath(root)
 	if err != nil {
 		return nil, err
@@ -300,6 +308,11 @@ func Build(root string) (*owl.Ontology, error) {
 	}
 	o := owl.New(iri)
 	o.Prefix("", iri+"#")
+	if pkgPrefix != "" {
+		// Compact prefers the longest matching namespace, so this wins over the
+		// default for the module's own packages and nothing else changes.
+		o.Prefix(pkgPrefix, iri+owl.IRI("#"+packageLocalName(module)+"."))
+	}
 	o.Annotate(owl.RDFSComment, owl.Str(about))
 
 	// The vocabulary for talking about Go code.

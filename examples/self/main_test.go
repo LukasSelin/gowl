@@ -16,7 +16,7 @@ import (
 //
 //	go run ./examples/self > examples/self/gowl.ofn
 func TestCommittedOntologyIsCurrent(t *testing.T) {
-	o, err := gocode.Build("../..")
+	o, err := gocode.BuildPrefixed("../..", pkgPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -38,7 +38,7 @@ func TestCommittedOntologyIsCurrent(t *testing.T) {
 // findings are expected — they are the types that satisfy no interface of the
 // module, such as the builders and option structs.
 func TestSelfLintsClean(t *testing.T) {
-	o, err := gocode.Build("../..")
+	o, err := gocode.BuildPrefixed("../..", pkgPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestSelfLintsClean(t *testing.T) {
 // against. The repository has no CI, so this test is what keeps the rules alive
 // outside a Claude Code session, where the invariants-check hook runs them.
 func TestOwnInvariantsHold(t *testing.T) {
-	o, err := gocode.Build("../..")
+	o, err := gocode.BuildPrefixed("../..", pkgPrefix)
 	if err != nil {
 		t.Fatal(err)
 	}
