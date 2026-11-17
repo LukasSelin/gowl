@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // shopBefore is a small module as it stands before a change.

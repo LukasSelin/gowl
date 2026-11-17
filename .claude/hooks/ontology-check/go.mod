@@ -2,6 +2,6 @@ module ontologycheck
 
 go 1.25.3
 
-require gowl v0.0.0
+require github.com/LukasSelin/gowl v0.0.0
 
-replace gowl => ../../..
+replace github.com/LukasSelin/gowl => ../../..

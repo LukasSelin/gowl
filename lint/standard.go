@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // PreferStandardTerms returns a rule that reports a term an ontology defines

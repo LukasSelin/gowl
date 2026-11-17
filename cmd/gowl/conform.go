@@ -8,9 +8,9 @@ import (
 	"sort"
 	"strings"
 
-	"gowl/internal/gocode"
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/internal/gocode"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // designDir is where a module keeps its plans, next to its go.mod. A plan

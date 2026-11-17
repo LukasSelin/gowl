@@ -26,8 +26,8 @@ import (
 	"strconv"
 	"strings"
 
-	"gowl/internal/rdf"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/internal/rdf"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // Options configures one conversion.

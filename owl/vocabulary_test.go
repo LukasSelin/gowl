@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // vocabDoc has a labelled class, an unlabelled one, a commented property and a

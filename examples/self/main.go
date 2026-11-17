@@ -14,7 +14,7 @@ import (
 	"fmt"
 	"os"
 
-	"gowl/internal/gocode"
+	"github.com/LukasSelin/gowl/internal/gocode"
 )
 
 func main() {

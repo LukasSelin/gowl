@@ -247,9 +247,9 @@ documents themselves, not transcribed.
 
 ```go
 import (
-    "gowl/owl"
-    "gowl/vocab/dcterms"
-    "gowl/vocab/skos"
+    "github.com/LukasSelin/gowl/owl"
+    "github.com/LukasSelin/gowl/vocab/dcterms"
+    "github.com/LukasSelin/gowl/vocab/skos"
 )
 
 o := owl.New("http://example.org/catalogue")
@@ -479,8 +479,10 @@ synthetic data - useful for the trend, not as absolutes:
 ## The `gowl` command
 
 ```bash
-go build ./cmd/gowl
+go install github.com/LukasSelin/gowl/cmd/gowl@latest
 ```
+
+or, from a clone, `go build ./cmd/gowl`.
 
 ```
 gowl lint    [-disable rules] [-fail-on severity] [-list] [-json] file.ofn
@@ -673,9 +675,11 @@ gowl gocode -o doppel.ofn ../doppel   # the same, without shell redirection
 gowl lint doppel.ofn
 ```
 
-The module path in `go.mod` is plain `gowl`, so `go install` does not work
-against the GitHub URL. To put the command on your `PATH`, clone the repository
-and run `go install ./cmd/gowl`.
+To put the command on your `PATH`:
+
+```bash
+go install github.com/LukasSelin/gowl/cmd/gowl@latest
+```
 
 The ontology is named by the module path, here `<https://github.com/LukasSelin/doppel>`.
 The mapping is the same as for gowl. The module has to build. Its own packages
@@ -864,7 +868,7 @@ the interface's package, such as `Item` in package `store`, means `store.Item`:
 A plan is about the module's own structure, so the change's imports from outside
 the module are not reported: what the module may depend on is a rule for the
 [invariants](#invariants-that-outlive-a-change). A plan that does name one, as
-`ObjectPropertyAssertion(:imports :package.gowl.store :package.strings)`, has it
+`ObjectPropertyAssertion(:imports :package.github.com.LukasSelin.gowl.store :package.strings)`, has it
 checked.
 
 Suppose the code leaves out `Amount` and adds a type nobody planned:

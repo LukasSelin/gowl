@@ -35,10 +35,10 @@ import (
 	"sort"
 	"strings"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 `)
 	for _, s := range ordered {
-		fmt.Fprintf(&b, "\t%q\n", "gowl/vocab/"+s.pkg)
+		fmt.Fprintf(&b, "\t%q\n", "github.com/LukasSelin/gowl/vocab/"+s.pkg)
 	}
 	b.WriteString(")\n\n")
 

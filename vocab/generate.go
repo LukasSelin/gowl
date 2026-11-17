@@ -7,4 +7,4 @@ package vocab
 //
 // This file is the only hand-written Go under vocab/.
 
-//go:generate go run gowl/cmd/vocabgen -out .
+//go:generate go run github.com/LukasSelin/gowl/cmd/vocabgen -out .

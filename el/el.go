@@ -26,7 +26,7 @@
 // Individuals are not classified. This is a TBox reasoner.
 package el
 
-import "gowl/owl"
+import "github.com/LukasSelin/gowl/owl"
 
 // conceptID and roleID number the concept and role names. Working with dense
 // integers rather than IRIs keeps saturation to slice and map lookups on small

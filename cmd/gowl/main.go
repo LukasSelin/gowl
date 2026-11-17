@@ -33,9 +33,9 @@ import (
 	"sort"
 	"strings"
 
-	"gowl/lint"
-	"gowl/owl"
-	"gowl/vocab"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
+	"github.com/LukasSelin/gowl/vocab"
 )
 
 const (

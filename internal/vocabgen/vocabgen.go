@@ -15,7 +15,7 @@ import (
 	"strings"
 	"unicode"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // A Package is one vocabulary to generate.
@@ -110,7 +110,7 @@ func (p Package) writeHeader(b *bytes.Buffer) {
 	fmt.Fprintf(b, "// Source: %s\n", p.SourceURL)
 	fmt.Fprintf(b, "// SHA-256: %s\n", p.SourceSHA256)
 	fmt.Fprintf(b, "package %s\n\n", p.Name)
-	fmt.Fprintf(b, "import (\n\t_ \"embed\"\n\t\"sync\"\n\n\t\"gowl/owl\"\n)\n\n")
+	fmt.Fprintf(b, "import (\n\t_ \"embed\"\n\t\"sync\"\n\n\t\"github.com/LukasSelin/gowl/owl\"\n)\n\n")
 
 	fmt.Fprintf(b, "// Prefix and Namespace are the vocabulary's customary prefix and the IRI it\n")
 	fmt.Fprintf(b, "// abbreviates.\nconst (\n")

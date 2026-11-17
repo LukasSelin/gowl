@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"gowl/internal/icv"
-	"gowl/lint"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/internal/icv"
+	"github.com/LukasSelin/gowl/lint"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // The checks [CheckInvariants] runs, besides the method checks it shares with
@@ -40,7 +40,7 @@ func PackageIndividual(module *owl.Ontology, path string) owl.NamedIndividual {
 // The code says which packages there are and what each imports, and nothing
 // else can: of what [Build] wrote, those facts alone are kept. The invariants
 // add facts of their own about words the code does not use, such as
-// ClassAssertion(:Library :package.gowl.owl) to put a package in a group, and
+// ClassAssertion(:Library :package.github.com.LukasSelin.gowl.owl) to put a package in a group, and
 // may declare a package the module does not depend on as an :ExternalPackage,
 // so that a rule can forbid it. Every other axiom of theirs is a rule, checked
 // over those facts as they stand, under the closed-world assumption: see

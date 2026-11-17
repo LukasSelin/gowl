@@ -44,8 +44,8 @@ additions point at. Names are the ones `gowl gocode` writes:
 | field holding a basic type: `Count int` | `Declaration(DataProperty(:store.Holding.Count))`, `DataPropertyDomain(:store.Holding.Count :store.Holding)`, `DataPropertyRange(:store.Holding.Count xsd:integer)` |
 | satisfies module interface `store.Priced` | `SubClassOf(:store.Holding :store.Priced)` |
 | interface method `Price(item Item) (int, error)` on `store.Priced` | `AnnotationAssertion(:method :store.Priced "Price(item Item) (int, error)")` |
-| package `gowl/internal/store` | `ClassAssertion(:Package :package.gowl.internal.store)` |
-| that package imports `gowl/owl` | `ObjectPropertyAssertion(:imports :package.gowl.internal.store :package.gowl.owl)` |
+| package `github.com/LukasSelin/gowl/internal/store` | `ClassAssertion(:Package :package.github.com.LukasSelin.gowl.internal.store)` |
+| that package imports `github.com/LukasSelin/gowl/owl` | `ObjectPropertyAssertion(:imports :package.github.com.LukasSelin.gowl.internal.store :package.github.com.LukasSelin.gowl.owl)` |
 
 Strings are `xsd:string`, booleans `xsd:boolean`, integers `xsd:integer` and
 floats `xsd:double`. A method is written as Go writes it; parameter names are

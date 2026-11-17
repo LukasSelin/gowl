@@ -3,12 +3,12 @@ package vocab_test
 import (
 	"fmt"
 
-	"gowl/owl"
-	"gowl/vocab"
-	"gowl/vocab/dcterms"
-	"gowl/vocab/foaf"
-	"gowl/vocab/prov"
-	"gowl/vocab/skos"
+	"github.com/LukasSelin/gowl/owl"
+	"github.com/LukasSelin/gowl/vocab"
+	"github.com/LukasSelin/gowl/vocab/dcterms"
+	"github.com/LukasSelin/gowl/vocab/foaf"
+	"github.com/LukasSelin/gowl/vocab/prov"
+	"github.com/LukasSelin/gowl/vocab/skos"
 )
 
 // Build on the standard vocabularies instead of inventing terms for things

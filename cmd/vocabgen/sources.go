@@ -1,6 +1,6 @@
 package main
 
-import "gowl/internal/rdf"
+import "github.com/LukasSelin/gowl/internal/rdf"
 
 // A source is one published vocabulary and how to read it.
 //

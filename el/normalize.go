@@ -1,6 +1,6 @@
 package el
 
-import "gowl/owl"
+import "github.com/LukasSelin/gowl/owl"
 
 // Normalization rewrites every axiom into one of four shapes, where each
 // letter is a concept name (possibly a fresh one, possibly a pole):

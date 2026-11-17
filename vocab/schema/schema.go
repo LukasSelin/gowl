@@ -19,7 +19,7 @@ import (
 	_ "embed"
 	"sync"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // Prefix and Namespace are the vocabulary's customary prefix and the IRI it

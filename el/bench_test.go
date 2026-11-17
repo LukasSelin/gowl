@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"gowl/el"
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/el"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // benchOntology builds a balanced hierarchy of n classes with existential

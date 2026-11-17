@@ -3,7 +3,7 @@ package el
 import (
 	"sort"
 
-	"gowl/owl"
+	"github.com/LukasSelin/gowl/owl"
 )
 
 // Unsupported returns the axioms the classifier could not use, in the order
