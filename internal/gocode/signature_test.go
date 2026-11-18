@@ -45,7 +45,9 @@ func TestNormalizeSignature(t *testing.T) {
 		{"Map[T any](xs []T, f func(T) T) []T", "x", nil, "Map[T any]([]T, func(T) T) []T"},
 		{"Keys[K comparable, V any](m map[K]V) []K", "x", nil, "Keys[K comparable, V any](map[K]V) []K"},
 		{"Pair[K, V any](k K, v V) Entry[K, V]", "x", nil, "Pair[K any, V any](K, V) x.Entry[K, V]"},
-		{"Sum[N ~int | ~float64](ns ...N) N", "x", nil, "Sum[N ~int | ~float64](...N) N"},
+		// A union's terms are sorted, as an interface's members are below.
+		{"Sum[N ~int | ~float64](ns ...N) N", "x", nil, "Sum[N ~float64 | ~int](...N) N"},
+		{"Sum[N ~int | ~string | ~float64](ns ...N) N", "x", nil, "Sum[N ~float64 | ~int | ~string](...N) N"},
 		{"Show[T fmt.Stringer](t T) string", "x", nil, "Show[T fmt.Stringer](T) string"},
 		{"Sort[T Ordered](ts []T)", "x", nil, "Sort[T x.Ordered]([]T)"},
 		// The type parameters of the type a method is on stay bare beside them.
@@ -57,7 +59,7 @@ func TestNormalizeSignature(t *testing.T) {
 			"Reporter(interface{PopStep(); PushStep(cmp.PathStep); Report(cmp.Result)}) cmp.Option"},
 		{"Do(x interface{ io.Reader; String() string; comparable })", "x", nil, "Do(interface{String() string; comparable; io.Reader})"},
 		// A constraint that is one interface around one thing is that thing.
-		{"Sum[N interface{ ~int | ~float64 }](ns ...N) N", "x", nil, "Sum[N ~int | ~float64](...N) N"},
+		{"Sum[N interface{ ~int | ~float64 }](ns ...N) N", "x", nil, "Sum[N ~float64 | ~int](...N) N"},
 		{"Show[T interface{ fmt.Stringer }](t T) string", "x", nil, "Show[T fmt.Stringer](T) string"},
 		{"Show[T interface{ String() string }](t T) string", "x", nil, "Show[T interface{String() string}](T) string"},
 	} {

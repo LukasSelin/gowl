@@ -92,6 +92,7 @@ type Conformance struct {
 	// packages and imports that were compared with the code.
 	Checked int
 	// Unchecked lists the terms the plan names outside the module's namespace,
+	// and the classes in it that are not named as types are, such as a group,
 	// which the code cannot say anything about.
 	Unchecked []owl.IRI
 	// Findings are ordered as [lint.Run] orders them.
@@ -137,10 +138,22 @@ func asBuilt(before, plan *owl.Ontology) *owl.Ontology {
 		name string
 	}
 	rewritten := map[offer]string{}
+	// grown holds, for each type the plan gives methods to, the ones that are
+	// new or changed.
+	grown := map[owl.Class]map[string]string{}
 	for typ, written := range want.methods {
+		old := codeMethods(was.methods[typ])
 		for _, d := range designed(packageName(typ, ns), written, was.methods[typ]) {
-			if d.err == nil {
-				rewritten[offer{typ.IRI(), methodName(d.sig)}] = d.sig
+			if d.err != nil {
+				continue
+			}
+			name := methodName(d.sig)
+			rewritten[offer{typ.IRI(), name}] = d.sig
+			if sig, ok := old[name]; !ok || !sameSignature(sig, d.sig) {
+				if grown[typ] == nil {
+					grown[typ] = map[string]string{}
+				}
+				grown[typ][name] = d.sig
 			}
 		}
 	}
@@ -148,6 +161,54 @@ func asBuilt(before, plan *owl.Ontology) *owl.Ontology {
 		for _, d := range designed(nameOfPackage(p, was.names), written, was.funcs[p]) {
 			if d.err == nil {
 				rewritten[offer{p.IRI(), methodName(d.sig)}] = d.sig
+			}
+		}
+	}
+
+	// A type that implements an interface itself gains what the plan adds to
+	// it, or changes in it, as [Conform] reads such a method: planned on the
+	// interface. A type that has the interface's methods only through an
+	// embedded field lists none of them, and gains none here; nor is an
+	// unexported method listed for a type.
+	var implied []owl.Axiom
+	if len(grown) > 0 {
+		kind := func(c owl.Class) string {
+			if k, ok := want.kinds[c]; ok {
+				return k
+			}
+			return was.kinds[c]
+		}
+		hierarchy := Overlay(before, plan)
+		for _, typ := range hierarchy.Classes() {
+			if !isTypeName(typ, ns) || kind(typ) == kindInterface {
+				continue
+			}
+			own := designedNames(want.methods[typ])
+			for name := range codeMethods(was.methods[typ]) {
+				own[name] = true
+			}
+			for _, iface := range hierarchy.AncestorsOf(typ) {
+				adds := grown[iface]
+				if len(adds) == 0 {
+					continue
+				}
+				direct := true
+				for name := range codeMethods(was.methods[iface]) {
+					direct = direct && (!token.IsExported(name) || own[name])
+				}
+				if !direct {
+					continue
+				}
+				for name, sig := range adds {
+					o := offer{typ.IRI(), name}
+					if _, planned := rewritten[o]; planned || !token.IsExported(name) {
+						continue
+					}
+					rewritten[o] = sig
+					implied = append(implied, owl.AnnotationAssertion{
+						Property: owl.AnnotationProperty(ns + vocabMethod), Subject: typ.IRI(), Value: owl.Str(sig),
+					})
+				}
 			}
 		}
 	}
@@ -184,6 +245,7 @@ func asBuilt(before, plan *owl.Ontology) *owl.Ontology {
 		}
 		restated.Add(ax)
 	}
+	restated.Add(implied...)
 	return Overlay(kept, restated)
 }
 
@@ -260,6 +322,14 @@ func ReviewPlan(plan, before *owl.Ontology) Delta {
 		undeclared(typ, was.classes[typ] || want.classes[typ], "type", "Declaration(Class("+merged.Render(typ)+"))")
 	}
 	for p := range packages {
+		if was.external[p] || want.external[p] {
+			// Declaring it would make it the module's own, which it is not.
+			d.Findings = append(d.Findings, lint.Finding{
+				Rule: UndeclaredEntity, Severity: lint.Warning, Subject: p.IRI(),
+				Message: fmt.Sprintf("the plan describes package %s, which is from outside the module: a plan describes the module's own packages, so correct the name, or leave it out", merged.Render(p)),
+			})
+			continue
+		}
 		undeclared(p, was.packages[p] || want.named[p], "package", "ClassAssertion(:"+vocabPackage+" "+merged.Render(p)+")")
 	}
 
@@ -289,21 +359,28 @@ func ReviewPlan(plan, before *owl.Ontology) Delta {
 // and [fieldsOf] read, and [Conform] the plan's superclasses.
 func planReads(ax owl.Axiom, ns owl.IRI) bool {
 	named := func(ok ...bool) bool { return !slices.Contains(ok, false) }
+	// A class of the module's that is not named as a type is, such as a group,
+	// is no type to [Conform] either.
+	typeLike := func(ce owl.ClassExpression) bool {
+		c, ok := ce.(owl.Class)
+		return ok && (!strings.HasPrefix(string(c), string(ns)) || isTypeName(c, ns) || isVocabulary(c, ns))
+	}
 	switch x := owl.Unwrap(ax).(type) {
 	case owl.Declaration:
+		if c, ok := x.Entity.(owl.Class); ok {
+			return typeLike(c)
+		}
 		return true
 	case owl.AnnotationAssertion:
 		// What a package is called is the code's to say, and nothing holds
 		// the code to a plan's word for it.
 		return x.Property.IRI() != ns+vocabName
 	case owl.SubClassOf:
-		_, sub := x.Sub.(owl.Class)
-		_, super := x.Super.(owl.Class)
-		return named(sub, super)
+		return typeLike(x.Sub) && typeLike(x.Super)
 	case owl.EquivalentClasses:
 		// Two types that satisfy each other: read as a SubClassOf each way.
 		for _, ce := range x {
-			if _, ok := ce.(owl.Class); !ok {
+			if !typeLike(ce) {
 				return false
 			}
 		}
@@ -532,9 +609,9 @@ func designed(pkg string, written, code []string) []designedSig {
 // package, leaving out any that is no signature.
 func designedNames(written []string) map[string]bool {
 	out := map[string]bool{}
-	for _, d := range designed("", written, nil) {
-		if d.err == nil {
-			out[methodName(d.sig)] = true
+	for _, w := range written {
+		if name, _, err := parseSignature(w); err == nil {
+			out[name] = true
 		}
 	}
 	return out
@@ -644,6 +721,11 @@ func Conform(plan, before, after *owl.Ontology) Conformance {
 		}
 		switch x := e.(type) {
 		case owl.Class:
+			if !isTypeName(x, ns) {
+				// A group, say: no type, and [ReviewPlan] has said so.
+				c.Unchecked = append(c.Unchecked, x.IRI())
+				continue
+			}
 			c.Checked++
 			if !now.classes[x] {
 				missingType(x, "the plan names type %s, and the code has no such exported type")
@@ -779,13 +861,23 @@ func Conform(plan, before, after *owl.Ontology) Conformance {
 		old := codeMethods(was.methods[typ])
 		planned := designedNames(want.methods[typ])
 		// An interface is a contract; what any other type offers is its own.
-		sev, implied := lint.Error, map[string]string{}
-		if now.kinds[typ] != kindInterface {
-			sev, implied = lint.Warning, asked(typ)
+		iface := now.kinds[typ] == kindInterface
+		sev := lint.Error
+		if !iface {
+			sev = lint.Warning
 		}
+		var implied map[string]string // read only when a method is new
 		for mname, sig := range codeMethods(sigs) {
-			if has(old, mname, sig) || planned[mname] || has(implied, mname, sig) {
+			if has(old, mname, sig) || planned[mname] {
 				continue
+			}
+			if !iface {
+				if implied == nil {
+					implied = asked(typ)
+				}
+				if has(implied, mname, sig) {
+					continue
+				}
 			}
 			report(UnplannedMethod, sev, typ.IRI(), "%s now has the method %s, and no plan names it", name(typ), sig)
 		}

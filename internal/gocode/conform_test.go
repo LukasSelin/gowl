@@ -718,6 +718,8 @@ func TestReviewPlanReportsWhatNothingChecks(t *testing.T) {
 
 	// Two named types said to be equivalent are read as satisfying each other,
 	// which conform checks. The other equivalence is with a class expression.
+	// The group's declaration is checked by nothing either: conform takes no
+	// class for a type that is not named as one.
 	var unchecked []string
 	for _, f := range d.Findings {
 		if f.Rule != UncheckedAxiom {
@@ -729,7 +731,7 @@ func TestReviewPlanReportsWhatNothingChecks(t *testing.T) {
 		unchecked = append(unchecked, strings.SplitN(owl.Functional(f.Axiom), "(", 2)[0])
 	}
 	slices.Sort(unchecked)
-	if got, want := strings.Join(unchecked, " "), "AnnotationAssertion ClassAssertion DisjointClasses EquivalentClasses ObjectPropertyAssertion SubClassOf"; got != want {
+	if got, want := strings.Join(unchecked, " "), "AnnotationAssertion ClassAssertion Declaration DisjointClasses EquivalentClasses ObjectPropertyAssertion SubClassOf"; got != want {
 		t.Errorf("unchecked = %s\nwant        %s", got, want)
 	}
 	// The group the plan declares is no type, so it is not a new one.

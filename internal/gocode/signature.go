@@ -557,14 +557,32 @@ func (w *sigWriter) expr(e ast.Expr) {
 		w.b.WriteByte('~')
 		w.expr(x.X)
 	case *ast.BinaryExpr:
-		// ~int | ~string, in a constraint.
+		// ~int | ~string, in a constraint. A union is the same whatever order
+		// its terms are in, so they are sorted, as an interface's members are.
 		if x.Op != token.OR {
 			w.fail(e)
 			return
 		}
-		w.expr(x.X)
-		w.b.WriteString(" | ")
-		w.expr(x.Y)
+		var terms []string
+		var flatten func(ast.Expr)
+		flatten = func(t ast.Expr) {
+			switch u := t.(type) {
+			case *ast.ParenExpr:
+				flatten(u.X)
+			case *ast.BinaryExpr:
+				if u.Op == token.OR {
+					flatten(u.X)
+					flatten(u.Y)
+					return
+				}
+				terms = append(terms, w.part(func(p *sigWriter) { p.expr(u) }))
+			default:
+				terms = append(terms, w.part(func(p *sigWriter) { p.expr(u) }))
+			}
+		}
+		flatten(x)
+		sort.Strings(terms)
+		w.b.WriteString(strings.Join(terms, " | "))
 	default:
 		w.fail(e)
 	}

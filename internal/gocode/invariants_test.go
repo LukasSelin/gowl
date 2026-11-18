@@ -551,8 +551,11 @@ func TestInvariantsFixed(t *testing.T) {
 	wantFindings(t, check(t, o, shopRules+"ClassAssertion(:Fixed "+core+")").Findings,
 		"unplanned-func package.example.com.shop.core")
 
-	// Only what the module has can be fixed.
-	wantFindings(t, check(t, o, shopRules+"ClassAssertion(:Fixed :package.os)").Findings, "unsupported-invariant package.os")
+	// Only what the module has can be fixed. A package it does not have is
+	// missing, as one put here before its code is; one it imports from outside
+	// has nothing to fix.
+	wantFindings(t, check(t, o, shopRules+"ClassAssertion(:Fixed :package.os)").Findings, "missing-package package.os")
+	wantFindings(t, check(t, o, shopRules+"ClassAssertion(:Fixed :package.net.http)").Findings, "unsupported-invariant package.net.http")
 }
 
 // A plan is held to what the invariants say the code offers before it is

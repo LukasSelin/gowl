@@ -617,20 +617,25 @@ func synopsis(p *pkg) string {
 // firstSentence is the first sentence of a doc comment, as go doc lists it.
 //
 // go/doc says nothing for a comment that begins the way a licence header
-// does, with "copyright", "all rights" or "author", because such a header is
-// often what sits above a package clause. A comment that only happens to
+// does, with one of [doc.IllegalPrefixes], because such a header is often what
+// sits above a package clause. header says the comment is where one could be,
+// and there go doc's word stands. Elsewhere a comment that only happens to
 // begin so, as the one on a type called Author does, is documentation all the
-// same, so its first line stands in. header says the comment is where a
-// licence header could be, and then one that begins with "copyright" or "all
-// rights" is still taken for one.
+// same, and its first sentence is found as go doc finds any other. A comment
+// that opens with anything but a paragraph, such as a heading, has none.
 func firstSentence(text string, header bool) string {
 	var pr doc.Package
-	if s := strings.TrimSpace(pr.Synopsis(text)); s != "" {
+	if s := strings.TrimSpace(pr.Synopsis(text)); s != "" || header {
 		return s
 	}
-	line, _, _ := strings.Cut(strings.TrimSpace(text), "\n")
-	if lower := strings.ToLower(line); header && (strings.HasPrefix(lower, "copyright") || strings.HasPrefix(lower, "all rights")) {
-		return ""
+	text = strings.TrimSpace(text)
+	for _, prefix := range doc.IllegalPrefixes {
+		if strings.HasPrefix(strings.ToLower(text), prefix) {
+			// A word in front hides the prefix and moves no sentence boundary.
+			const lead = "A "
+			s, _ := strings.CutPrefix(strings.TrimSpace(pr.Synopsis(lead+text)), lead)
+			return s
+		}
 	}
-	return strings.TrimSpace(line)
+	return ""
 }

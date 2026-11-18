@@ -2,6 +2,7 @@ package gocode
 
 import (
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 
@@ -118,8 +119,10 @@ func readInvariants(invariants, module *owl.Ontology, known []owl.NamedIndividua
 	for _, c := range code.types(ns) {
 		owned[c.IRI()] = true
 	}
-	for p := range code.props {
-		owned[p] = true
+	for p, f := range code.fields {
+		if isTypeName(f.domain, ns) { // a field of a type, not a word a plan declared
+			owned[p] = true
+		}
 	}
 	for _, v := range []string{
 		vocabPackage, vocabExternalPackage, vocabImports, vocabDefinedIn,
@@ -205,18 +208,29 @@ func readInvariants(invariants, module *owl.Ontology, known []owl.NamedIndividua
 			}
 		}
 	}
+	// A package the invariants list functions for, or fix, is one the module
+	// is to have, written into them before its code: what it lacks is reported
+	// as missing, by [reading.checkOffers].
+	planned := func(i owl.NamedIndividual) bool {
+		return len(r.funcs[i.IRI()]) > 0 || slices.Contains(r.groups[ns+groupFixed], i)
+	}
 	for _, i := range untyped {
 		if isKnown[i] {
 			r.data.Add(owl.ClassAssertion{Class: extClass, Individual: i})
+			continue
+		}
+		if planned(i) {
 			continue
 		}
 		if invariants.IsDeclared(i) || len(invariants.AxiomsReferencing(i)) > 0 {
 			r.report(UnknownPackage, lint.Error, i.IRI(), "the invariants name %s, which is no package of the module, the standard library or a dependency; declare it with ClassAssertion(:%s %s) if it is one the module must never use", r.name(i), vocabExternalPackage, r.name(i))
 		}
 	}
-	// Whatever else the invariants name is a type, or a slip of the pen.
+	// Whatever else the invariants name the way a type is named is a type, or
+	// a slip of the pen. Another individual, such as a layer a fact relates a
+	// package to, is the invariants' own.
 	for _, i := range invariants.Individuals() {
-		if strings.HasPrefix(string(i), packagePrefix) || r.types[i] || isKnown[i] {
+		if strings.HasPrefix(string(i), packagePrefix) || !isTypeName(owl.Class(i), ns) || r.types[i] || isKnown[i] {
 			continue
 		}
 		r.report(UnknownType, lint.Error, i.IRI(), "the invariants name %s, which is no exported type of the module", r.name(i))
@@ -240,13 +254,13 @@ func (r *reading) codeFacts(module *owl.Ontology) {
 	// them, such as :imports in a module that imports nothing.
 	data.Declare(pkgClass, extClass, typeClass, structClass, ifaceClass, documented, imports, definedIn, implements, holds)
 
-	for _, p := range sortedKeys(code.packages) {
+	for _, p := range slices.Sorted(maps.Keys(code.packages)) {
 		data.Add(owl.ClassAssertion{Class: pkgClass, Individual: p})
 		if code.documented[p.IRI()] {
 			data.Add(owl.ClassAssertion{Class: documented, Individual: p})
 		}
 	}
-	for _, p := range sortedKeys(code.external) {
+	for _, p := range slices.Sorted(maps.Keys(code.external)) {
 		data.Add(owl.ClassAssertion{Class: extClass, Individual: p})
 	}
 	for e := range code.imports {
@@ -293,16 +307,6 @@ func (r *reading) codeFacts(module *owl.Ontology) {
 	for e := range held {
 		data.Add(owl.ObjectPropertyAssertion{Property: holds, Subject: e.from, Object: e.to})
 	}
-}
-
-// sortedKeys lists the keys of a set, sorted.
-func sortedKeys[K ~string](set map[K]bool) []K {
-	out := make([]K, 0, len(set))
-	for k := range set {
-		out = append(out, k)
-	}
-	slices.Sort(out)
-	return out
 }
 
 // Facts returns the facts [CheckInvariants] checks the rules of invariants
@@ -374,10 +378,21 @@ func CheckInvariants(invariants, module *owl.Ontology, known []owl.NamedIndividu
 // offers, and returns how many signatures it compared.
 func (r *reading) checkOffers() int {
 	fixed := map[owl.NamedIndividual]bool{}
+	packagePrefix := string(r.ns) + "package."
 	for _, m := range r.groups[r.ns+groupFixed] {
 		fixed[m] = true
-		if !r.types[m] && !r.code.packages[m] {
-			r.report(UnsupportedInvariant, lint.Error, m.IRI(), "not checked: %s is :%s, and is no package or type of the module, so there is nothing to fix", r.name(m), groupFixed)
+		switch {
+		case r.types[m] || r.code.packages[m]:
+		case r.code.external[m]:
+			r.report(UnsupportedInvariant, lint.Error, m.IRI(), "not checked: %s is :%s, and is a package from outside the module, so there is nothing to fix", r.name(m), groupFixed)
+		// Else it is one the module is to have, put here before its code. One
+		// the invariants list anything for is reported missing below, once.
+		case strings.HasPrefix(string(m), packagePrefix):
+			if len(r.funcs[m.IRI()]) == 0 {
+				r.report(MissingPackage, lint.Error, m.IRI(), "the invariants put %s in :%s, and the module has no such package", r.name(m), groupFixed)
+			}
+		case len(r.methods[m.IRI()]) == 0:
+			r.report(MissingType, lint.Error, m.IRI(), "the invariants put %s in :%s, and the module has no such exported type", r.name(m), groupFixed)
 		}
 	}
 
@@ -448,7 +463,7 @@ func sortedSubjects(given map[owl.NamedIndividual][]string, fixed map[owl.NamedI
 			all[i] = true
 		}
 	}
-	return sortedKeys(all)
+	return slices.Sorted(maps.Keys(all))
 }
 
 // ReviewInvariants checks a plan against the invariants before any of it is
