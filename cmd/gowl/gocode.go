@@ -15,6 +15,7 @@ import (
 func cmdGoCode(args []string) int {
 	fs := flag.NewFlagSet("gocode", flag.ContinueOnError)
 	out := fs.String("o", "", "write the ontology to this file instead of stdout")
+	prefix := fs.String("prefix", "", "option to abbreviate the module's own packages under this prefix name")
 	dirs, err := parseArgs(fs, args)
 	if err != nil {
 		return exitProblem
@@ -28,7 +29,8 @@ func cmdGoCode(args []string) int {
 		root = dirs[0]
 	}
 
-	o, err := gocode.Build(root)
+	// An empty name leaves BuildPrefixed on its default, so the flag needs no sentinel.
+	o, err := gocode.BuildPrefixed(root, *prefix)
 	if err != nil {
 		return fail(err)
 	}

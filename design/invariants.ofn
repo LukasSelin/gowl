@@ -345,6 +345,7 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     # gocode: describing a module, and holding the code to a plan and to this
     # file.
     AnnotationAssertion(:func :package.github.com.LukasSelin.gowl.internal.gocode "Build(root string) (*owl.Ontology, error)")
+    AnnotationAssertion(:func :package.github.com.LukasSelin.gowl.internal.gocode "BuildPrefixed(root string, pkgPrefix string) (*owl.Ontology, error)")
     AnnotationAssertion(:func :package.github.com.LukasSelin.gowl.internal.gocode "KnownPackages(root string) ([]string, error)")
     AnnotationAssertion(:func :package.github.com.LukasSelin.gowl.internal.gocode "Namespace(module *owl.Ontology) owl.IRI")
     AnnotationAssertion(:func :package.github.com.LukasSelin.gowl.internal.gocode "PackageIndividual(module *owl.Ontology, path string) owl.NamedIndividual")
