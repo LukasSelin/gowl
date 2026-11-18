@@ -12,7 +12,13 @@ import (
 // library, here reached through a local replace so the test needs no network,
 // whose context.Context crosses into the module; and a nested module, which
 // belongs to no one but itself.
-func TestOtherModule(t *testing.T) {
+// writeZooModule writes a two-module tree under a temporary directory and
+// returns the root of example.com/zoo: a module with a sub-package, an
+// external dependency, a nested module that is not part of it, and types
+// that exercise interfaces, embedding and struct fields. Shared so that the
+// tests of prefixed and unprefixed output describe the same code.
+func writeZooModule(t *testing.T) string {
+	t.Helper()
 	t.Setenv("GOWORK", "off")
 	tmp := t.TempDir()
 	write := func(name, src string) {
@@ -89,7 +95,67 @@ type Pen struct{ Size int }
 type Ghost struct{}
 `)
 
-	o, err := Build(filepath.Join(tmp, "zoo"))
+	return filepath.Join(tmp, "zoo")
+}
+
+// Build writes every package IRI in full. The prefix is opt-in, so a caller
+// that does not ask for one gets a document naming nothing it did not name
+// before: the same ontology, spelled the long way.
+func TestWithoutPrefixNothingAbbreviated(t *testing.T) {
+	root := writeZooModule(t)
+
+	o, err := Build(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := o.Functional()
+
+	for _, want := range []string{
+		"ObjectPropertyAssertion(:imports :package.example.com.zoo :package.example.com.zoo.pen)",
+		`AnnotationAssertion(rdfs:label :package.example.com.zoo.pen "example.com/zoo/pen"^^xsd:string)`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("missing %s", want)
+		}
+	}
+	// Not merely that no name is abbreviated: that no prefix was declared to
+	// abbreviate one with. A stray Prefix() line would be harmless to a reader
+	// and invisible to the checks above.
+	for _, unwanted := range []string{"pkg:", "Prefix(pkg:"} {
+		if strings.Contains(got, unwanted) {
+			t.Errorf("declares or uses %s, though no prefix was asked for", unwanted)
+		}
+	}
+	// The same guard TestOtherModule makes, in the spelling this document uses:
+	// a package of another module is not described.
+	if strings.Contains(got, "package.example.com.zoo.nested") {
+		t.Error("describes the nested module, which is not part of this one")
+	}
+}
+
+// An empty name is how Build asks for no prefix, so the two must agree
+// exactly. Tested against the whole document rather than a sample of it,
+// because the claim is that nothing differs.
+func TestEmptyPrefixSameAsNone(t *testing.T) {
+	root := writeZooModule(t)
+
+	none, err := Build(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty, err := BuildPrefixed(root, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if none.Functional() != empty.Functional() {
+		t.Error(`BuildPrefixed(root, "") differs from Build(root)`)
+	}
+}
+
+func TestOtherModule(t *testing.T) {
+	root := writeZooModule(t)
+
+	o, err := BuildPrefixed(root, "pkg")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -97,7 +163,7 @@ type Ghost struct{}
 	for _, want := range []string{
 		"Ontology(<https://example.com/zoo>",
 		"SubClassOf(:zoo.Cat :zoo.Animal)",
-		"ObjectPropertyAssertion(:imports :package.example.com.zoo :package.example.com.zoo.pen)",
+		"ObjectPropertyAssertion(:imports :package.example.com.zoo pkg:pen)",
 		// What the module imports from outside it is recorded too, dependency
 		// and standard library alike, but not what those import in turn.
 		"ObjectPropertyAssertion(:imports :package.example.com.zoo :package.example.com.keeper)",
@@ -118,7 +184,7 @@ type Ghost struct{}
 			t.Errorf("missing %s", want)
 		}
 	}
-	for _, unwanted := range []string{"Ghost", "package.example.com.zoo.nested", `:zoo.Feeder "Name() string"`, "ClassAssertion(:Package :package.example.com.keeper)", ":package.context :"} {
+	for _, unwanted := range []string{"Ghost", "pkg:nested", `:zoo.Feeder "Name() string"`, "ClassAssertion(:Package :package.example.com.keeper)", ":package.context :"} {
 		if strings.Contains(got, unwanted) {
 			t.Errorf("describes %s, which is not part of the module", unwanted)
 		}
