@@ -215,3 +215,15 @@ func TestUnknownCommand(t *testing.T) {
 		t.Errorf("no arguments: exit = %d, want 2", code)
 	}
 }
+
+func TestMovedCommandsSayWhereTheyWent(t *testing.T) {
+	for _, name := range []string{"gocode", "sprawl", "plan", "conform", "invariants"} {
+		out, code := capture(t, func() int { return run([]string{name, "."}) })
+		if code != exitProblem {
+			t.Errorf("%s: exit = %d, want %d", name, code, exitProblem)
+		}
+		if !strings.Contains(out, "godesign "+name) || !strings.Contains(out, "go install github.com/LukasSelin/godesign/cmd/godesign@latest") {
+			t.Errorf("%s: should say how to run it with godesign:\n%s", name, out)
+		}
+	}
+}

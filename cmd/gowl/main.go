@@ -1,5 +1,4 @@
-// Command gowl inspects OWL 2 ontologies written in functional syntax, and
-// writes one describing a Go module's code.
+// Command gowl inspects OWL 2 ontologies written in functional syntax.
 //
 // Usage:
 //
@@ -9,20 +8,19 @@
 //	gowl classify [-axioms] [-explain "sub super"] [-json] file.ofn
 //	gowl fmt     [-w] [-canonical] file.ofn
 //	gowl stats   [-json] file.ofn
-//	gowl gocode  [-o file.ofn] [module-dir]
-//	gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
-//	gowl plan    [-base ref] [-fail-on severity] [-json] plan.ofn [module-dir]
-//	gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
 //
-// Exit status is 0 on success, 1 when a check fails (lint, sprawl, plan or
-// conform findings at or above the fail threshold, or a non-empty diff under
-// -exit-code), and 2 on a usage or I/O error.
+// Exit status is 0 on success, 1 when a check fails (lint findings at or above
+// the fail threshold, or a non-empty diff under -exit-code), and 2 on a usage
+// or I/O error.
 //
-// Every command except fmt and gocode takes -json, which writes one JSON object
-// to stdout instead of text — including on failure, so a caller that parses
-// stdout always gets a document. Exit statuses are the same in both modes. fmt
-// and gocode have no -json because their output is an ontology document, not a
-// report. The document shapes live in json.go.
+// Every command except fmt takes -json, which writes one JSON object to stdout
+// instead of text — including on failure, so a caller that parses stdout always
+// gets a document. Exit statuses are the same in both modes. fmt has no -json
+// because its output is an ontology document, not a report. The document shapes
+// live in json.go.
+//
+// The commands that describe Go code as an ontology (gocode, sprawl, plan,
+// conform and invariants) moved to godesign, github.com/LukasSelin/godesign.
 package main
 
 import (
@@ -66,24 +64,32 @@ func run(args []string) int {
 		return cmdFmt(args[1:])
 	case "stats":
 		return cmdStats(args[1:])
-	case "sprawl":
-		return cmdSprawl(args[1:])
-	case "plan":
-		return cmdPlan(args[1:])
-	case "conform":
-		return cmdConform(args[1:])
-	case "invariants":
-		return cmdInvariants(args[1:])
-	case "gocode":
-		return cmdGoCode(args[1:])
 	case "help", "-h", "--help":
 		usage()
 		return exitOK
 	default:
+		if movedToGodesign[args[0]] {
+			fmt.Fprintf(os.Stderr, "gowl: %[1]s moved to godesign. Install it with\n\n"+
+				"  go install github.com/LukasSelin/godesign/cmd/godesign@latest\n\n"+
+				"and run \"godesign %[1]s\" with the same flags.\n", args[0])
+			return exitProblem
+		}
 		fmt.Fprintf(os.Stderr, "gowl: unknown command %q\n\n", args[0])
 		usage()
 		return exitProblem
 	}
+}
+
+// movedToGodesign names the commands that left gowl for godesign, which
+// describes Go code as an ontology and holds changes to a design. Running one
+// says where it went instead of only that it is unknown. This is for the
+// release they left in; the next one can drop it.
+var movedToGodesign = map[string]bool{
+	"gocode":     true,
+	"sprawl":     true,
+	"plan":       true,
+	"conform":    true,
+	"invariants": true,
 }
 
 func usage() {
@@ -95,39 +101,15 @@ func usage() {
   gowl classify [-axioms] [-explain "sub super"] [-unsatisfiable] [-json] file.ofn
   gowl fmt     [-w] [-canonical] file.ofn
   gowl stats   [-json] file.ofn
-  gowl gocode  [-o file.ofn] [module-dir]
-  gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
-  gowl plan    [-base ref] [-invariants file] [-fail-on severity] [-json] plan.ofn [module-dir]
-  gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
-  gowl invariants [-file invariants.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
 
 classify runs the OWL 2 EL reasoner: it infers the class hierarchy, finds
 classes that cannot have instances, and explains why a subsumption holds.
 
-gocode describes a Go module's code as an ontology: exported types become
-classes, struct fields properties, and packages individuals. Give it the
-directory holding the module's go.mod (default: the current directory).
-
-sprawl runs gocode on the module and on the same module at -base (default
-HEAD), and reports what the change added beside the existing types rather
-than through them: a type whose fields repeat another's, and a new type that
-connects to nothing that was there.
-
-plan and conform keep a change to a design written before it. A plan is an
-ontology naming what the change will add, in the names gocode writes. plan
-checks it before any code exists, as though it were already built. conform
-compares the code with it both ways: what the plan names that the code lacks,
-and what the change added that the plan does not name. Unless -design says
-otherwise, the plans are the files under design/ that differ from the base,
-which defaults to where this branch left the default branch.
-
-invariants checks the code against design/invariants.ofn: rules about its
-packages, what they may import and which interfaces have fixed methods, that
-hold on every change rather than for one. plan checks a plan against them too,
-so a plan that would break one fails before any code exists.
-
-Every command except fmt and gocode takes -json for machine-readable output.
+Every command except fmt takes -json for machine-readable output.
 Run "gowl <command> -h" for the flags of one command.
+
+gocode, sprawl, plan, conform and invariants moved to godesign:
+https://github.com/LukasSelin/godesign
 `)
 }
 

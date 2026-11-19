@@ -4,10 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path/filepath"
 
 	"github.com/LukasSelin/gowl/el"
-	"github.com/LukasSelin/gowl/internal/gocode"
 	"github.com/LukasSelin/gowl/lint"
 	"github.com/LukasSelin/gowl/owl"
 )
@@ -397,115 +395,5 @@ func statsJSON(file string, o *owl.Ontology, kinds []string, counts map[string]i
 			Datatypes:        len(o.Datatypes()),
 		},
 		AxiomTypes: types,
-	}
-}
-
-// --- sprawl -----------------------------------------------------------------
-
-type sprawlDoc struct {
-	Dir string `json:"dir"`
-	// Base is the -base flag as given; BaseCommit is what it resolved to.
-	Base       string `json:"base"`
-	BaseCommit string `json:"base_commit"`
-	// Added and Changed are class IRIs: the types the change introduced, and
-	// the existing types whose fields it changed.
-	Added    []string     `json:"added"`
-	Changed  []string     `json:"changed"`
-	Findings []findingDoc `json:"findings"`
-	// AlreadyReported counts the findings -seen left out. The summary covers
-	// only the findings reported.
-	AlreadyReported int         `json:"already_reported"`
-	Summary         lintSummary `json:"summary"`
-}
-
-// planDoc is what gowl plan writes: what gowl sprawl would say about the plan
-// if it were already code, and which plan that was. Invariants names the file
-// the plan was also checked against, or is empty when the module has none;
-// InvariantsChecked counts its rules.
-type planDoc struct {
-	Design            string `json:"design"`
-	Invariants        string `json:"invariants"`
-	InvariantsChecked int    `json:"invariants_checked"`
-	sprawlDoc
-}
-
-// invariantsDoc is what gowl invariants writes. Invariants is empty when the
-// module has none.
-type invariantsDoc struct {
-	Dir        string       `json:"dir"`
-	Invariants string       `json:"invariants"`
-	Checked    int          `json:"checked"`
-	Findings   []findingDoc `json:"findings"`
-	// AlreadyReported counts the findings -seen left out. The summary covers
-	// only the findings reported.
-	AlreadyReported int         `json:"already_reported"`
-	Summary         lintSummary `json:"summary"`
-}
-
-func invariantsJSON(dir, path string, o *owl.Ontology, c gocode.Conformance, findings []lint.Finding, already int, threshold lint.Severity) invariantsDoc {
-	l := lintJSON(dir, o, findings, threshold)
-	return invariantsDoc{
-		Dir:             dir,
-		Invariants:      path,
-		Checked:         c.Checked,
-		Findings:        l.Findings,
-		AlreadyReported: already,
-		Summary:         l.Summary,
-	}
-}
-
-// conformDoc is what gowl conform writes.
-type conformDoc struct {
-	Dir string `json:"dir"`
-	// Base is how the base was named; BaseCommit is what it resolved to.
-	Base       string `json:"base"`
-	BaseCommit string `json:"base_commit"`
-	// Designs are the plan files compared with the code.
-	Designs []string `json:"designs"`
-	// Checked counts the planned items compared with the code. Unchecked lists
-	// the terms the plans name outside the module.
-	Checked   int          `json:"checked"`
-	Unchecked []string     `json:"unchecked"`
-	Findings  []findingDoc `json:"findings"`
-	// AlreadyReported counts the findings -seen left out. The summary covers
-	// only the findings reported.
-	AlreadyReported int         `json:"already_reported"`
-	Summary         lintSummary `json:"summary"`
-}
-
-func conformJSON(dir, base, commit string, paths []string, o *owl.Ontology, c gocode.Conformance, findings []lint.Finding, already int, threshold lint.Severity) conformDoc {
-	l := lintJSON(dir, o, findings, threshold)
-	designs := make([]string, len(paths))
-	for i, p := range paths {
-		designs[i] = filepath.ToSlash(p)
-	}
-	unchecked := make([]string, len(c.Unchecked))
-	for i, iri := range c.Unchecked {
-		unchecked[i] = string(iri)
-	}
-	return conformDoc{
-		Dir:             dir,
-		Base:            base,
-		BaseCommit:      commit,
-		Designs:         designs,
-		Checked:         c.Checked,
-		Unchecked:       unchecked,
-		Findings:        l.Findings,
-		AlreadyReported: already,
-		Summary:         l.Summary,
-	}
-}
-
-func sprawlJSON(dir, base, commit string, o *owl.Ontology, d gocode.Delta, findings []lint.Finding, already int, threshold lint.Severity) sprawlDoc {
-	l := lintJSON(dir, o, findings, threshold)
-	return sprawlDoc{
-		Dir:             dir,
-		Base:            base,
-		BaseCommit:      commit,
-		Added:           renderClasses(o, d.Added),
-		Changed:         renderClasses(o, d.Changed),
-		Findings:        l.Findings,
-		AlreadyReported: already,
-		Summary:         l.Summary,
 	}
 }

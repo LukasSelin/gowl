@@ -432,8 +432,9 @@ reported may still be entailed
 ```
 
 To check a finite set of facts against axioms, rather than infer from them,
-see [Invariants that outlive a change](#invariants-that-outlive-a-change): a
-closed-world check of a small fragment, with counterexamples.
+see godesign's
+[invariants](https://github.com/LukasSelin/godesign#invariants-that-outlive-a-change):
+a closed-world check of a small fragment, with counterexamples.
 
 Results are always **sound** - what it derives is entailed. Skipping axioms
 costs **completeness**, so when `Unsupported()` is non-empty, a subsumption it
@@ -491,11 +492,6 @@ gowl profile [-v] [-json] file.ofn
 gowl classify [-axioms] [-explain "sub super"] [-unsatisfiable] [-fail-on-incoherent] [-json] file.ofn
 gowl fmt     [-w] [-canonical] file.ofn
 gowl stats   [-json] file.ofn
-gowl gocode  [-prefix name] [-o file.ofn] [module-dir]
-gowl sprawl  [-base ref] [-fail-on severity] [-seen file] [-json] [module-dir]
-gowl plan    [-base ref] [-invariants file] [-fail-on severity] [-json] plan.ofn [module-dir]
-gowl conform [-base ref] [-design plan.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
-gowl invariants [-file invariants.ofn] [-fail-on severity] [-seen file] [-json] [module-dir]
 ```
 
 `classify` runs the EL reasoner. `-axioms` writes the inferred taxonomy as an
@@ -503,26 +499,21 @@ ontology document, `-explain` justifies one subsumption, and
 `-fail-on-incoherent` exits 1 when a class cannot have instances - which is the
 form to put in CI.
 
-`gocode` works in the other direction. It writes an ontology describing a Go
-module's code, which the other commands can then read. See
-[Describing a Go module](#describing-a-go-module). `sprawl` runs it twice, on
-the working tree and on a base commit, to check what a change did to the
-module's types. See [Catching sprawl](#catching-sprawl). `plan` and `conform`
-keep a change to a design written before it. See
-[Planning a change before writing it](#planning-a-change-before-writing-it).
-`invariants` checks the code against the rules a module keeps on every change.
-See [Invariants that outlive a change](#invariants-that-outlive-a-change).
+The commands that describe Go code as an ontology, `gocode`, `sprawl`,
+`plan`, `conform` and `invariants`, moved to
+[godesign](https://github.com/LukasSelin/godesign); see
+[Go code as an ontology](#go-code-as-an-ontology).
 
 Exit status is 0 on success, 1 when a check fails (findings at or above
 `-fail-on`, or a non-empty diff under `-exit-code`), and 2 on a usage or parse
-error — so `gowl lint`, `gowl conform`, `gowl invariants` and
+error — so `gowl lint`, `gowl classify -fail-on-incoherent` and
 `gowl diff -exit-code` drop straight into CI.
 
 ### JSON output
 
-Every command except `fmt` and `gocode` takes `-json` and then writes exactly one
-JSON object to stdout. Those two have none because their output is an ontology
-document, not a report.
+Every command except `fmt` takes `-json` and then writes exactly one JSON object
+to stdout. `fmt` has none because its output is an ontology document, not a
+report.
 
 ```bash
 gowl lint -json onto.ofn | jq -r '.findings[] | select(.severity=="error") | .message'
@@ -530,10 +521,6 @@ gowl diff -json old.ofn new.ofn | jq '.counts'
 gowl profile -json onto.ofn | jq -r '.in_profiles[]'
 gowl stats -json onto.ofn | jq '.counts.classes'
 gowl lint -list -json | jq -r '.rules[].name'
-gowl sprawl -json | jq -r '.added[]'
-gowl plan -json design/change.ofn | jq -r '.findings[].message'
-gowl conform -json | jq -r '.designs[], .summary.failed'
-gowl invariants -json | jq -r '.findings[].message'
 ```
 
 Three properties make this safe to script against:
@@ -600,470 +587,30 @@ rules := append(lint.Default(), lint.Rule{
 findings := lint.Run(o, rules)
 ```
 
-### Linting gowl itself
-
-[`examples/self`](examples/self/main.go) type-checks this repository and
-describes it as an OWL ontology, built with gowl's own builders.
-[`examples/self/gowl.ofn`](examples/self/gowl.ofn) is the result, and it is
-what the linter runs on here.
-
-- Each exported Go type becomes a class.
-- A type that satisfies one of the module's interfaces becomes a `SubClassOf`
-  that interface. gowl's Go types for OWL therefore form an OWL class
-  hierarchy themselves.
-- Struct fields become object or data properties, with domains and ranges.
-  An embedded field counts, under its type's name.
-- Packages become `:Package` individuals, linked by `:imports` to the packages
-  they import. A package from outside the module, such as `fmt`, is an
-  `:ExternalPackage`.
-- An interface lists the methods it declares, with the annotation `:method`.
-
-```bash
-go run ./examples/self > examples/self/gowl.ofn
-gowl lint -fail-on info examples/self/gowl.ofn
-```
-
-```
-info: orphan-class: class :el.Classification has no asserted superclass or equivalence
-info: orphan-class: class :lint.Rule has no asserted superclass or equivalence
-info: orphan-class: class :owl.ClassBuilder has no asserted superclass or equivalence
-...
-29 finding(s)
-```
-
-_(IRIs abbreviated here; the CLI prints them in full.)_
-
-None of these findings is a warning or an error. The 29 `orphan-class` notes
-are the types that satisfy no interface in the module: the builders, option
-structs, `owl.Index`, the root interfaces `owl.Node` and `rdf.Term`, and the
-vocabulary classes such as `:ExternalPackage`. They are accurate, and at `info`
-they do not fail the default run.
-
-The first run did not look like this. The linter reported 102 `duplicate-axiom`
-warnings. They came from a bug in the generator: it called `o.Define(class)`
-again for every `SubClassOf` edge, and `Define` declares the class each time it
-is called. The fix was to keep one builder per class.
-[`main_test.go`](examples/self/main_test.go) keeps it that way. The test fails
-when the committed `gowl.ofn` no longer matches the code, and it fails on any
-finding at `warning` or above.
-
-The other commands work on the same file:
-
-```
-$ gowl stats examples/self/gowl.ofn
-classes             122
-object properties   144
-data properties     41
-individuals         63
-
-$ gowl classify -explain ":owl.SubClassOf :owl.Node" examples/self/gowl.ofn
-:owl.SubClassOf ⊑ :owl.Node follows from:
-  SubClassOf(:owl.Axiom :owl.Node)
-  SubClassOf(:owl.SubClassOf :owl.Axiom)
-```
-
-### Describing a Go module
-
-The generator behind `examples/self` lives in
-[`internal/gocode`](internal/gocode/gocode.go), and `gowl gocode` runs it on any
-Go module. Give it the directory that holds the module's `go.mod`; it defaults
-to the current directory:
-
-```bash
-gowl gocode ../doppel > doppel.ofn
-gowl gocode -o doppel.ofn ../doppel   # the same, without shell redirection
-gowl lint doppel.ofn
-```
-
-To put the command on your `PATH`:
-
-```bash
-go install github.com/LukasSelin/gowl/cmd/gowl@latest
-```
-
-The ontology is named by the module path, here `<https://github.com/LukasSelin/doppel>`.
-The mapping is the same as for gowl. The module has to build. Its own packages
-are read from source. Everything they import is read from the export data that
-`go list -export` produces inside that module, standard library and
-third-party modules alike, so its dependencies must already be in the module
-cache. Directories that hold their own `go.mod` are other modules and are
-skipped, as the go tool skips them.
-
-Besides its types, the description records each package's direct imports, and
-the methods of each interface:
-
-- A package the module imports from outside, standard library or dependency,
-  is an `:ExternalPackage` individual, such as `:package.net.http`. Only the
-  module's own imports are recorded, not what those packages import in turn.
-  Whether a package is the module's own is decided by the packages found under
-  its root, so a nested module counts as outside.
-- An interface lists each method it declares with the annotation `:method`, as
-  `Name(parameter types) result types`, for example
-  `AnnotationAssertion(:method :owl.Entity "Kind() owl.Kind")`. Parameter names
-  are left out, a type is qualified by its package's name as the classes are,
-  and `byte`, `rune` and `interface{}` are written `uint8`, `int32` and `any`.
-  An unexported method counts, because one such as `owl.Axiom`'s `isAxiom`
-  seals the interface: only its own package can implement it. An embedded
-  interface of the module is a `SubClassOf` instead, and an embedded one from
-  outside it, such as `io.Reader`, adds its methods.
-- Imports are read from the files that build on the machine running gocode, so
-  an import that only a file such as `x_windows.go` makes shows up on Windows
-  alone.
-
-One importer serves the standard library and the dependencies, so each package
-is loaded once. A cobra command's `context.Context` is therefore the same type
-as the module's own. Loading the standard library and third-party code through
-two importers would produce two different `context` packages, and the module
-would fail to type-check.
-
-### Catching sprawl
-
-A codebase sprawls when a change adds new types next to the existing ones
-instead of building on them: a struct copied under a new name, or a type
-that nothing else uses. `gowl sprawl` looks for both in a change. It runs
-`gocode` on the module twice, once on the working tree and once at `-base`
-(default `HEAD`), and compares the two ontologies. The base version is copied
-out with `git archive`, so the working tree, the index and other worktrees are
-not touched.
-
-- **`same-shape-type`** (warning) reports a type the change added or reshaped
-  whose fields match another type's. Fields are compared by type and not by
-  name, because a copy is usually renamed. The type may have the same fields
-  as the other one (reuse it), every field of it plus more (embed it), or only
-  fields it also has (use it instead). A match has to share at least two
-  fields, and one of them has to be of a type the module defines.
-- **`new-orphan`** (info) reports a new type that connects to no type that
-  existed before. It satisfies none of the module's interfaces, no type
-  satisfies it, and no field links it to an existing type in either direction.
-
-On the module from the tests, with `Holding` and `Memo` added to `Item` and
-`Stock`:
-
-```
-$ gowl sprawl
-compared with HEAD (ea4c786a2d2d): 2 new type(s), 0 changed
-  new:     :store.Holding, :store.Memo
-
-warning: same-shape-type: :store.Holding has the same fields as :store.Stock (:store.Item, xsd:integer); consider reusing it
-info: new-orphan: new type :store.Memo connects to no type that existed before: no interface, implementation or field links it to one
-
-2 finding(s)
-```
-
-The checks look only at what the change did. Checked as if every type were
-new, 32 of gowl's own types would match another of its types. Most are OWL
-types: `ObjectSomeValuesFrom` and `ObjectAllValuesFrom` have the same fields
-because the OWL specification gives them the same arguments. Reporting all of
-those on every run would hide the one copy a change has just added. For the
-same reason, a match that already held before the change is not reported
-again just because one of its two types changed.
-
-The checks see only what `gocode` records:
-
-- exported types;
-- fields whose type is a module type (directly, or through a pointer or slice)
-  or a basic type.
-
-Maps, functions and methods are not recorded. A type that is only ever a
-function parameter, such as an options struct, therefore looks unconnected,
-which is why `new-orphan` is only `info`. Duplicate functions are a job for a
-clone detector.
-
-Nothing reaches the default `-fail-on error`, so in CI pass `-fail-on warning`
-and a base that covers the whole branch:
-
-```bash
-gowl sprawl -base origin/main -fail-on warning
-```
-
-A run takes about 3.5 seconds on this repository. Most of that is
-type-checking the base copy.
-
-#### Before an agent finishes
-
-[`.claude/hooks/sprawl-check.sh`](.claude/hooks/sprawl-check.sh) is a Claude
-Code `Stop` hook, registered in [`.claude/settings.json`](.claude/settings.json).
-When a turn ends with Go changes since `HEAD`, or since `GOWL_SPRAWL_BASE` if
-that is set, the hook runs `gowl sprawl` and passes any findings back to the
-agent. The agent then reworks the change to reuse, embed or implement what is
-already there, or tells the user why a new type is the right call.
-
-`-seen` records each finding in a per-session file, so each finding is
-reported only once. That also means the hook cannot keep the agent looping. A
-turn whose Go changes were already checked costs about half a second. If the
-tree does not build, the hook skips the check.
-
-### Planning a change before writing it
-
-`gowl sprawl` looks at a change after it is written. `gowl plan` and
-`gowl conform` start earlier. The plan for a change is written first, as an
-ontology in `design/<change>.ofn` next to the module's `go.mod`, and the code is
-then held to it.
-
-A plan uses the names `gocode` writes, so it can be compared with the code. It
-names only what the change adds or alters, plus the existing types those
-additions point at:
-
-```
-Prefix(:=<https://example.com/store#>)
-Prefix(xsd:=<http://www.w3.org/2001/XMLSchema#>)
-
-Ontology(<https://example.com/store/design/holdings>
-    Declaration(Class(:store.Item))
-
-    Declaration(Class(:store.Holding))
-    Declaration(ObjectProperty(:store.Holding.What))
-    ObjectPropertyDomain(:store.Holding.What :store.Holding)
-    ObjectPropertyRange(:store.Holding.What :store.Item)
-    Declaration(DataProperty(:store.Holding.Amount))
-    DataPropertyDomain(:store.Holding.Amount :store.Holding)
-    DataPropertyRange(:store.Holding.Amount xsd:integer)
-)
-```
-
-`gowl plan` reads the module as though the plan were already code, so the checks
-from `gowl sprawl` run before anything is built. It also reports what the plan
-adds to the linter's findings, leaving out `orphan-class` and `missing-label`. A
-name the plan uses and never declares, usually a typo, shows up as
-`undeclared-entity`.
-
-```
-$ gowl plan -fail-on warning design/holdings.ofn
-compared with main merge-base (c5bb468eaa49): 1 new type(s), 0 changed
-  new:     :store.Holding
-
-warning: same-shape-type: :store.Holding has the same fields as :store.Stock (:store.Item, xsd:integer); consider reusing it
-
-1 finding(s)
-```
-
-An interface's methods are its contract, and a plan that adds or changes one
-names it. Parameter names and spacing are the writer's own, and a bare type of
-the interface's package, such as `Item` in package `store`, means `store.Item`:
-
-```
-    Declaration(Class(:store.Priced))
-    AnnotationAssertion(:method :store.Priced "Price(item Item) (cents int, err error)")
-```
-
-`gowl conform` compares the code with the plan, both ways:
-
-| Rule | Severity | Reports |
-|---|---|---|
-| `missing-type` | error | a type the plan names and the code does not have |
-| `missing-field` | error | a field the plan names and the code does not have |
-| `field-mismatch` | error | a field on another struct, or holding another type, than the plan says |
-| `missing-interface` | error | a type that does not satisfy an interface the plan says it satisfies |
-| `missing-package` | error | a package the plan names and the module does not have |
-| `missing-import` | error | an import between packages that the plan names and the code does not have |
-| `unplanned-type` | error | a type the change added that no plan names |
-| `unplanned-package` | error | a package the change added that no plan names |
-| `unplanned-field` | warning | a field the change added or retyped that no plan names |
-| `unplanned-import` | warning | an import the change added that no plan names |
-| `missing-method` | error | a method the plan gives an interface that the code does not declare |
-| `method-mismatch` | error | a method the code declares with another signature than the plan's |
-| `unplanned-method` | error | a method the change added to an interface, or changed, that no plan names |
-| `malformed-method` | error | a method in a plan that is not a signature |
-
-A plan is about the module's own structure, so the change's imports from outside
-the module are not reported: what the module may depend on is a rule for the
-[invariants](#invariants-that-outlive-a-change). A plan that does name one, as
-`ObjectPropertyAssertion(:imports :package.github.com.LukasSelin.gowl.store :package.strings)`, has it
-checked.
-
-Suppose the code leaves out `Amount` and adds a type nobody planned:
-
-```
-$ gowl conform
-compared with main merge-base (c5bb468eaa49): 1 plan(s), 4 planned item(s) checked
-  plans:     design/holdings.ofn
-
-error: missing-field: the plan names field :store.Holding.Amount, and the code does not have it as an exported field of a module or basic type
-error: unplanned-type: type :store.Memo is new, and no plan names it
-
-2 finding(s)
-```
-
-The plans are the files under `design/` that differ from the base, or the ones
-named with `-design`. The base defaults to where this branch left the default
-branch, so a plan committed partway through a branch still counts. Once merged, a
-plan is part of the base and is no longer checked: it records a decision, and
-later changes write their own. For the same reason, a plan has to reach the
-default branch together with its code, or be named with `-design`. A change that
-adds no exported structure, such as most bug fixes, passes with no plan at all.
-
-A plan can only say as much as `gocode` records:
-
-- **Structure only.** Interfaces' methods are in it; functions, the methods of
-  other types, and behaviour are not, so a plan does not replace tests.
-- **Exported types and some of their fields.** A field of a map, a function or a
-  type from outside the module is not recorded, so a plan cannot name one and
-  `conform` does not see one being added.
-- **Additions only.** A plan says what should exist, so removing something is not
-  reported. The invariants can fix an interface's methods so that removing one
-  is.
-- **Go only.** `gocode` reads Go modules.
-
-#### Holding an agent to the plan
-
-Three pieces in [`.claude/`](.claude) make this the order Claude Code works in.
-They run only in Claude Code sessions, so to hold everyone to a plan, also run
-`gowl conform -fail-on warning` in CI.
-
-- The [`design-first`](.claude/skills/design-first/SKILL.md) skill walks through
-  writing the plan, checking it, building to it and verifying the result.
-- [`.claude/hooks/design-gate.sh`](.claude/hooks/design-gate.sh) is a `PreToolUse`
-  hook that refuses an `Edit` or `Write` adding an exported type no `design/*.ofn`
-  file names. A bug fix adds no types, so it never notices one. It lets through
-  anything it cannot read, and `GOWL_DESIGN_GATE=off` turns it off.
-- [`.claude/hooks/conform-check.sh`](.claude/hooks/conform-check.sh) is a `Stop`
-  hook that runs `gowl conform` when a turn ends with Go changes since the base,
-  or since `GOWL_DESIGN_BASE` if that is set. It reports each finding once, as
-  the sprawl hook does. A turn that only wrote a plan has nothing to compare yet,
-  and a tree that does not build skips the check.
-
-The gate sees only `Edit` and `Write`, and only types. Anything changed through a
-shell command, and any field, import or package, is caught at the end of the turn
-instead.
-
-### Invariants that outlive a change
-
-A plan is about one change, says only what should exist, and is retired once it
-is merged. Some decisions are not like that: the core does no I/O, `owl` imports
-nothing else in the module, a new package is put in a layer on purpose. Those go
-in `design/invariants.ofn`, which is never retired. `gowl invariants` checks the
-code against it, and `gowl plan` checks every plan against it, so a plan that
-would break a rule fails while it is still a few lines of a design.
-
-```
-Prefix(:=<https://example.com/shop#>)
-Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
-
-Ontology(<https://example.com/shop/design/invariants>
-    # Groups: facts the code cannot state.
-    ClassAssertion(:Core :package.example.com.shop.core)
-    ClassAssertion(:Core :package.example.com.shop.billing)
-    ClassAssertion(:Edge :package.example.com.shop.api)
-    ClassAssertion(:Effectful :package.os)
-    ClassAssertion(:Effectful :package.net.http)
-
-    # A derived property: imports, followed any distance.
-    SubObjectPropertyOf(:imports :dependsOn)
-    TransitiveObjectProperty(:dependsOn)
-
-    # Rules.
-    DisjointClasses(Annotation(rdfs:comment "The core does no I/O")
-        :Core ObjectSomeValuesFrom(:dependsOn :Effectful))
-    SubClassOf(Annotation(rdfs:comment "Every package is placed on purpose")
-        :Package ObjectUnionOf(:Core :Edge))
-
-    # A contract: these are the methods of core.Store, now and later.
-    AnnotationAssertion(:method :core.Store "Get(id int) (Thing, error)")
-)
-```
-
-When billing starts to use the api, the core reaches the network through it:
-
-```
-$ gowl invariants
-checked against design/invariants.ofn: 3 rule(s)
-
-error: invariant-violated: The core does no I/O: :package.example.com.shop.billing is :Core, and :package.example.com.shop.billing :dependsOn :package.net.http, which is :Effectful (through :package.example.com.shop.billing →:imports :package.example.com.shop.api →:imports :package.net.http)
-
-1 finding(s)
-```
-
-The rule comes first, in its own words, then the package that breaks it, and
-the imports to blame. That is a counterexample, the way a model checker gives
-one, and it is the shortest the facts allow.
-
-**How it reads the file.** A reasoner reads axioms open-world: that a package is
-not said to import `os` does not mean it does not. A description of code is
-different. It is complete for what it records, so the check is closed-world:
-what the code does not do, it does not do. Each axiom has one of four jobs:
-
-- **The code's facts** are which packages there are and what each imports. Only
-  the code says so: an assertion about `:Package`, `:ExternalPackage` or
-  `:imports` in the file is refused. To forbid an import, use
-  `NegativeObjectPropertyAssertion`.
-- **Groups** are `ClassAssertion`s with a class of the file's own, such as
-  `:Core`. `ClassAssertion(:ExternalPackage …)` declares a package the module
-  does not depend on yet, so that a rule can forbid it.
-- **Derived properties** come from `SubObjectPropertyOf` between named
-  properties and `TransitiveObjectProperty`. They may only define a property
-  the facts do not state, so a rule can define `:dependsOn` from `:imports`,
-  but cannot add an import.
-- **Rules** are `SubClassOf`, `DisjointClasses` and
-  `NegativeObjectPropertyAssertion`, over named classes, `owl:Thing`,
-  `owl:Nothing`, `ObjectIntersectionOf`, `ObjectUnionOf`, `ObjectComplementOf`,
-  `ObjectOneOf`, `ObjectSomeValuesFrom`, `ObjectAllValuesFrom` and
-  `ObjectHasValue`, with a property or its `ObjectInverseOf`.
-
-A `:method` annotation fixes an interface's methods: the code must have exactly
-those, so a method added, changed or removed is reported on every run, unlike
-in a plan.
-
-The subject of a `SubClassOf`, and each operand of a `DisjointClasses`, has to
-be bounded by the facts: a named class, `ObjectOneOf`, `ObjectHasValue`,
-`ObjectSomeValuesFrom`, or an intersection or union built from those.
-`owl:Thing`, `ObjectComplementOf` and `ObjectAllValuesFrom` are refused there,
-because who they include depends on which names happen to be mentioned, and a
-rule over them could change its answer when an unrelated package is named.
-
-| Rule | Severity | Reports |
-|---|---|---|
-| `invariant-violated` | error | a rule the code breaks, once for each package that breaks it |
-| `unsupported-invariant` | error | an axiom outside what the checker reads, with the reason; it is an error because a rule nobody checks reads as if it held |
-| `unknown-package` | error | a package that is no package of the module, the standard library, a dependency or a plan for the change, and is not declared an `:ExternalPackage`: usually a misspelling, which in a rule that forbids a package quietly forbids nothing |
-| `empty-term` | warning | a group or property the rules use that nothing defines, so they hold or fail for no package |
-| `missing-method`, `method-mismatch`, `unplanned-method` | error | a fixed interface whose methods differ from the file's |
-
-**What it can and cannot see.** It sees packages and their direct imports, and
-interfaces' methods. Imports are a proxy for effects, and a coarse one: `fmt`
-both formats strings and prints them. Packages from outside the module have no
-imports of their own in the facts, so `:dependsOn` follows the module's own
-packages and stops at the first package outside it.
-
-**The checker.** [`internal/icv`](internal/icv/icv.go) does the checking. It
-knows nothing about Go and does no I/O; [`CheckInvariants`](internal/gocode/invariants.go)
-gives it the facts and turns what it reports into findings. Its tests compare
-it, on 60 random finite models, with the semantics written out the slow,
-obvious way. They also check:
-
-- that a universal is a negated existential of the negation, and that De
-  Morgan holds;
-- that the derived transitive property is exactly what a search reaches, with
-  the shortest path as its proof;
-- that every path is a chain of asserted facts;
-- that naming an unrelated package changes no answer;
-- that the order the rules are written in changes nothing.
-
-As with the reasoner, the batch has to contain both broken and kept rules, so
-the comparison cannot pass vacuously.
-
-**gowl's own.** [`design/invariants.ofn`](design/invariants.ofn) holds the
-following rules:
-
-- every package is in the library, internal or the tools;
-- `owl` imports nothing else in the module;
-- the library never reaches into internal packages;
-- the library and the pure internal packages never reach `os`, the network,
-  `os/exec` or logging;
-- `internal/icv`, the checker, builds on `owl` and the standard library alone;
-- the methods of `owl.Node` and `owl.Entity`, and the seal of `owl.Axiom`, are
-  fixed.
-
-`TestOwnInvariantsHold` in [`examples/self`](examples/self/main_test.go) keeps
-them in `go test ./...`.
-
-[`.claude/hooks/invariants-check.sh`](.claude/hooks/invariants-check.sh) is a
-`Stop` hook. When a turn ends with changes to the Go code or to the invariants
-themselves, it runs `gowl invariants` and hands any finding back to the agent,
-once.
+### Go code as an ontology
+
+Describing a Go module's code as an ontology, and holding changes to that code
+to a design, moved to [godesign](https://github.com/LukasSelin/godesign), which
+is built on this library. Its commands are the ones gowl had:
+
+- `gocode` describes a module's types, fields, interfaces and imports;
+- `sprawl` reports a change that grows the module beside its existing types
+  instead of through them;
+- `plan` and `conform` hold a change to a plan written before it;
+- `invariants` checks the code against rules it keeps on every change.
+
+godesign is also a Claude Code plugin that applies them while an agent writes
+code. The ontologies it writes are plain OWL 2, so `gowl lint`, `gowl classify`
+and `gowl diff` read them like any other.
+
+gowl keeps [`design/invariants.ofn`](design/invariants.ofn), the rules its own
+layers keep, and CI checks the code against them with godesign.
+[CONTRIBUTING.md](CONTRIBUTING.md) says what that means for a pull request, and
+how to plan a change first if you want to.
 
 ### Asking questions of Kubernetes' API types
 
-`gowl gocode` copies code into OWL, and a reasoner can do little with the
+godesign's `gocode` copies code into OWL, and a reasoner can do little with the
 result. Go has no inheritance, so the classes have no hierarchy. Field domains
 and ranges, package individuals and their imports are all outside OWL 2 EL, so
 `gowl classify` ignores them.
@@ -1219,8 +766,8 @@ Not yet:
   reasoning, no ABox reasoning, and no minimal justifications. See
   [Reasoning](#reasoning) for what it covers and what it reports as
   unsupported. Outside the reasoner, every query and lint rule still reports
-  only what is asserted. The closed-world checker behind `gowl invariants` is
-  internal, and covers a small fragment.
+  only what is asserted. The closed-world checker behind godesign's
+  `invariants` is part of godesign, and covers a small fragment.
 - **Full DL profile validation.** See Profiles above for exactly what is covered.
 - **N-ary data ranges.** `DataSomeValuesFrom` takes a single data property.
 
@@ -1248,18 +795,13 @@ Not yet:
 | `internal/rdf/` | Turtle and RDF/XML readers (generator only) |
 | `internal/rdfowl/` | mapping RDF triples onto the structural model |
 | `internal/vocabgen/` | writing a Go package for one vocabulary |
-| `internal/gocode/` | describing a Go module's code as an ontology (`gowl gocode`), comparing two versions of it (`gowl sprawl`), comparing it with a plan (`gowl plan`, `gowl conform`), and checking it against its invariants (`gowl invariants`) |
-| `internal/icv/` | checking facts against OWL axioms under the closed-world assumption, with counterexamples |
-| `design/` | `invariants.ofn`, the rules the code keeps on every change; the plans for changes in progress; and a record of past ones |
-| `.claude/hooks/` | Claude Code hooks: ontology checks on `.ofn` edits, a gate on exported types no plan names, and `gowl sprawl`, `gowl conform` and `gowl invariants` before a turn ends |
-| `.claude/skills/` | Claude Code skills: adding an ontology term, and planning a Go change before writing it |
+| `design/` | `invariants.ofn`, the rules gowl's layers keep on every change, checked with godesign; and the plans for changes in progress |
 | `el/normalize.go` | rewriting axioms into EL normal form |
 | `el/classify.go` | the completion rules and saturation |
 | `el/query.go` | subsumption queries, taxonomy, explanations |
 | `lint/` | the lint rule engine and built-in rules |
 | `cmd/gowl/` | the command-line tool |
 | `cmd/gowl/json.go` | the `-json` document shapes |
-| `examples/self/` | this repository described as an ontology, linted by its own linter |
 | `examples/k8s/` | Go type structure for an EL reasoner, with questions about Kubernetes' API types |
 | `owl/testdata/` | corpus fixtures and their golden renderings |
 | `owl/walk.go` | entity traversal, `Signature`, `References` |
@@ -1270,7 +812,6 @@ go test ./owl -bench . -benchtime 100x         # benchmarks
 go test ./owl -run TestGoldenRoundTrip -update # regenerate golden files
 go test ./owl -fuzz FuzzParseFunctional        # fuzz the parser
 go generate ./vocab                            # refetch and regenerate vocab/
-go run ./examples/self > examples/self/gowl.ofn # regenerate the self-description
 ```
 
 `owl/testdata` holds loosely formatted fixtures next to their golden renderings,

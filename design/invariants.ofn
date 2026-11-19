@@ -1,9 +1,10 @@
-# The rules gowl's code keeps on every change.
+# The rules gowl's code keeps on every change, checked by godesign
+# (github.com/LukasSelin/godesign).
 #
 # A plan in design/ describes one change and is retired once it is merged. This
-# file is not: "gowl invariants" checks the code against it whenever either one
-# changes, and "gowl plan" checks every plan against it before the code is
-# written. Change a rule here first, with a reason, and the code after it.
+# file is not: "godesign invariants" checks the code against it whenever either
+# one changes, and "godesign plan" checks every plan against it before the code
+# is written. Change a rule here first, with a reason, and the code after it.
 #
 # The code supplies the facts: which packages there are, and what each imports.
 # The ClassAssertions below put packages in groups. Every other logical axiom is
@@ -11,12 +12,12 @@
 # code does not do, it does not do. An rdfs:comment on a rule says why it
 # exists, and is what a broken rule is reported by.
 
-Prefix(:=<https://github.com/LukasSelin/gowl/self#>)
+Prefix(:=<https://github.com/LukasSelin/gowl#>)
 Prefix(rdfs:=<http://www.w3.org/2000/01/rdf-schema#>)
 
 Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
 
-    # The words gocode describes the code with.
+    # The words godesign gocode describes the code with.
     Declaration(Class(:Package))
     Declaration(Class(:ExternalPackage))
     Declaration(ObjectProperty(:imports))
@@ -72,17 +73,12 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     ClassAssertion(:Library :package.github.com.LukasSelin.gowl.vocab.skosxl)
     ClassAssertion(:Library :package.github.com.LukasSelin.gowl.vocab.time)
 
-    Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.internal.gocode))
-    Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.internal.icv))
     Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.internal.rdf))
     Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.internal.rdfowl))
     Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.internal.vocabgen))
-    ClassAssertion(:Internal :package.github.com.LukasSelin.gowl.internal.gocode)
-    ClassAssertion(:Internal :package.github.com.LukasSelin.gowl.internal.icv)
     ClassAssertion(:Internal :package.github.com.LukasSelin.gowl.internal.rdf)
     ClassAssertion(:Internal :package.github.com.LukasSelin.gowl.internal.rdfowl)
     ClassAssertion(:Internal :package.github.com.LukasSelin.gowl.internal.vocabgen)
-    ClassAssertion(:Pure :package.github.com.LukasSelin.gowl.internal.icv)
     ClassAssertion(:Pure :package.github.com.LukasSelin.gowl.internal.rdf)
     ClassAssertion(:Pure :package.github.com.LukasSelin.gowl.internal.rdfowl)
     ClassAssertion(:Pure :package.github.com.LukasSelin.gowl.internal.vocabgen)
@@ -90,11 +86,9 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.cmd.gowl))
     Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.cmd.vocabgen))
     Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.examples.k8s))
-    Declaration(NamedIndividual(:package.github.com.LukasSelin.gowl.examples.self))
     ClassAssertion(:Tool :package.github.com.LukasSelin.gowl.cmd.gowl)
     ClassAssertion(:Tool :package.github.com.LukasSelin.gowl.cmd.vocabgen)
     ClassAssertion(:Tool :package.github.com.LukasSelin.gowl.examples.k8s)
-    ClassAssertion(:Tool :package.github.com.LukasSelin.gowl.examples.self)
 
     Declaration(NamedIndividual(:package.os))
     Declaration(NamedIndividual(:package.os.exec))
@@ -124,11 +118,8 @@ Ontology(<https://github.com/LukasSelin/gowl/design/invariants>
     SubClassOf(Annotation(rdfs:comment "The library stands on its own: it never reaches into internal packages or tools")
         :Library ObjectAllValuesFrom(:imports ObjectUnionOf(:Library :ExternalPackage)))
 
-    DisjointClasses(Annotation(rdfs:comment "The library and the pure internal packages do no I/O: effects stay at the edges, in the tools and in gocode")
+    DisjointClasses(Annotation(rdfs:comment "The library and the pure internal packages do no I/O: effects stay at the edges, in the tools")
         ObjectUnionOf(:Library :Pure) ObjectSomeValuesFrom(:dependsOn :Effectful))
-
-    SubClassOf(Annotation(rdfs:comment "The invariant checker is the trusted core, so it stays small: owl and the standard library, and nothing else")
-        ObjectOneOf(:package.github.com.LukasSelin.gowl.internal.icv) ObjectAllValuesFrom(:imports ObjectUnionOf(ObjectOneOf(:package.github.com.LukasSelin.gowl.owl) :ExternalPackage)))
 
     # Contracts. These interfaces are what the rest of the module, and every
     # program using gowl, is written against; their methods change only here first.
