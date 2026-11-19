@@ -6,8 +6,8 @@ import (
 	"github.com/LukasSelin/gowl/owl"
 )
 
-// Unsupported returns the axioms the classifier could not use, in the order
-// they appear in the ontology. An empty result means the whole ontology was
+// Unsupported returns the axioms the classifier could not use in full, in the
+// order they appear in the ontology. An empty result means the whole ontology was
 // classified; a non-empty one means the classification is sound but possibly
 // incomplete, so a subsumption it does not report is not evidence that the
 // subsumption fails.

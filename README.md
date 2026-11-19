@@ -383,6 +383,7 @@ c.IsSubsumedBy(margherita, cheesyPizza)  // entailed, even if never asserted
 c.SuperClassesOf(margherita)             // everything above it
 c.DirectSuperClassesOf(margherita)       // the taxonomy, transitively reduced
 c.EquivalentClassesOf(x)
+c.AreDisjoint(salami, mozzarella)        // entailed, inherited or derived
 c.UnsatisfiableClasses()                 // classes that cannot have instances
 c.IsCoherent()                           // ...and whether there are any
 c.InferredAxioms()                       // the result as ontology axioms
@@ -416,7 +417,9 @@ Class expressions: named classes, `owl:Thing`, `owl:Nothing`,
 `ObjectIntersectionOf`, `ObjectSomeValuesFrom`. Axioms: `SubClassOf`,
 `EquivalentClasses`, `DisjointClasses`, `ObjectPropertyDomain`,
 `SubObjectPropertyOf`, `EquivalentObjectProperties`,
-`TransitiveObjectProperty` and property chains.
+`TransitiveObjectProperty` and property chains. `DisjointUnion` is used in
+part: its operands are subclasses of its class and pairwise disjoint, but that
+they cover the class is outside EL, so it is still listed by `Unsupported()`.
 
 Everything else - nominals, `ObjectHasSelf`, data properties, property
 **ranges**, keys, and every non-EL constructor - is listed by `Unsupported()`
