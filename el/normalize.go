@@ -124,6 +124,19 @@ func (n *normalizer) axiom(ax owl.Axiom, src owl.Axiom) {
 			}
 		}
 
+	case owl.DisjointUnion:
+		// C ≡ D₁ ⊔ … ⊔ Dₙ with the Dᵢ pairwise disjoint. Each Dᵢ ⊑ C and the
+		// disjointness are EL; C ⊑ D₁ ⊔ … ⊔ Dₙ is not. Using the half that is
+		// EL keeps the result sound, and reporting the axiom anyway keeps it
+		// honest about the half that was dropped.
+		for i, d := range x.Operands {
+			n.gci(d, x.Class, src)
+			for _, e := range x.Operands[i+1:] {
+				n.gci(owl.And(d, e), owl.Nothing, src)
+			}
+		}
+		n.reject(src)
+
 	case owl.ObjectPropertyDomain:
 		// Domain is ∃r.⊤ ⊑ C, which is already an EL axiom. Range is not: it
 		// needs a universal restriction, so it lands in Unsupported below.

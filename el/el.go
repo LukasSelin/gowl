@@ -15,6 +15,9 @@
 // Axioms: SubClassOf, EquivalentClasses, DisjointClasses,
 // ObjectPropertyDomain, SubObjectPropertyOf, EquivalentObjectProperties,
 // TransitiveObjectProperty and property chains (SubPropertyChainOf).
+// DisjointUnion is used in part: its operands are subclasses of its class and
+// pairwise disjoint, but that they cover the class is outside EL, so the axiom
+// is still reported by [Classification.Unsupported].
 //
 // Everything else — nominals, ObjectHasSelf, data properties, ranges, keys,
 // and every non-EL constructor — is reported by [Classification.Unsupported]
