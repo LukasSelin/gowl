@@ -537,7 +537,7 @@ func (r *report) String() string {
 		writeFindings(&b, r.newFindings)
 	}
 	if len(r.newUnsupported) > 0 {
-		w("\nNew axioms outside OWL 2 EL, which the reasoner skipped:\n")
+		w("\nNew axioms outside OWL 2 EL, which the reasoner skipped or used only in part:\n")
 		for i, ax := range r.newUnsupported {
 			if i == maxListed {
 				w("  ... and %d more\n", len(r.newUnsupported)-maxListed)
@@ -555,7 +555,7 @@ func (r *report) String() string {
 		w("\nnote: %d class(es) were already unsatisfiable before this change\n", r.stillUnsat)
 	}
 	if r.nUnsupported > 0 {
-		w("note: %d axiom(s) are outside OWL 2 EL and were not reasoned over, so a clean result is not proof\n", r.nUnsupported)
+		w("note: %d axiom(s) are outside OWL 2 EL and were not reasoned over in full, so a clean result is not proof\n", r.nUnsupported)
 	}
 	return b.String()
 }

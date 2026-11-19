@@ -238,8 +238,9 @@ type classifyDoc struct {
 	Classes            int      `json:"classes"`
 	InferredAxiomCount int      `json:"inferred_axiom_count"`
 	Unsatisfiable      []string `json:"unsatisfiable"`
-	// Unsupported lists the axioms outside OWL 2 EL that were skipped. When it
-	// is non-empty the classification is sound but may be incomplete.
+	// Unsupported lists the axioms outside OWL 2 EL that were skipped or used
+	// only in part. When it is non-empty the classification is sound but may
+	// be incomplete.
 	Unsupported []string `json:"unsupported"`
 	Notes       []string `json:"notes"`
 	// InferredAxioms is populated only under -axioms.

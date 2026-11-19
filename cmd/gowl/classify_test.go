@@ -33,7 +33,7 @@ func TestClassifyText(t *testing.T) {
 		"coherent            false",
 		"unsatisfiable classes (1)",
 		":Impossible",
-		"not classified (1 axiom outside OWL 2 EL)",
+		"not used in full (1 axiom outside OWL 2 EL)",
 		"ObjectPropertyRange(:hasTopping :Topping)",
 	} {
 		if !strings.Contains(out, want) {

@@ -22,7 +22,7 @@ gowl's linter and OWL 2 EL reasoner over both versions and reports:
   cause it, and subsumptions that no longer hold.
 - **New lint findings**, including `prefer-standard-term` (a standard
   vocabulary already has this term) and `missing-label`.
-- New axioms outside OWL 2 EL, which the reasoner skipped.
+- New axioms outside OWL 2 EL, which the reasoner skipped or used only in part.
 
 The same check runs automatically as a PostToolUse hook whenever a `.ofn` file
 is edited, so the final edit is verified again.

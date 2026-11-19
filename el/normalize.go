@@ -118,11 +118,34 @@ func (n *normalizer) axiom(ax owl.Axiom, src owl.Axiom) {
 		}
 
 	case owl.DisjointClasses:
-		for i := range x {
-			for j := i + 1; j < len(x); j++ {
-				n.gci(owl.And(x[i], x[j]), owl.Nothing, src)
+		// The operands are a set, so a repeated one is not disjoint from itself.
+		ops := distinct(x)
+		for i := range ops {
+			for j := i + 1; j < len(ops); j++ {
+				n.gci(owl.And(ops[i], ops[j]), owl.Nothing, src)
 			}
 		}
+
+	case owl.DisjointUnion:
+		// C ≡ D₁ ⊔ … ⊔ Dₙ with the Dᵢ pairwise disjoint, the Dᵢ a set as in
+		// DisjointClasses. With one operand that is C ≡ D₁, all of it EL.
+		ops := distinct(x.Operands)
+		if len(ops) == 1 {
+			n.gci(x.Class, ops[0], src)
+			n.gci(ops[0], x.Class, src)
+			return
+		}
+		// Otherwise each Dᵢ ⊑ C and the disjointness are EL; C ⊑ D₁ ⊔ … ⊔ Dₙ
+		// is not. Using the half that is EL keeps the result sound, and
+		// reporting the axiom anyway keeps it honest about the half that was
+		// dropped.
+		for i, d := range ops {
+			n.gci(d, x.Class, src)
+			for _, e := range ops[i+1:] {
+				n.gci(owl.And(d, e), owl.Nothing, src)
+			}
+		}
+		n.reject(src)
 
 	case owl.ObjectPropertyDomain:
 		// Domain is ∃r.⊤ ⊑ C, which is already an EL axiom. Range is not: it
@@ -157,6 +180,22 @@ func (n *normalizer) axiom(ax owl.Axiom, src owl.Axiom) {
 	default:
 		n.reject(src)
 	}
+}
+
+// distinct drops repeated class expressions, keeping the first of each in
+// order. Two count as the same when their canonical forms match, which is the
+// sameness [owl.CanonicalAxiom] uses when it de-duplicates operands.
+func distinct(ces []owl.ClassExpression) []owl.ClassExpression {
+	seen := make(map[string]bool, len(ces))
+	out := make([]owl.ClassExpression, 0, len(ces))
+	for _, ce := range ces {
+		key := owl.Functional(owl.CanonicalClassExpression(ce))
+		if !seen[key] {
+			seen[key] = true
+			out = append(out, ce)
+		}
+	}
+	return out
 }
 
 func (n *normalizer) roleOf(p owl.ObjectPropertyExpression) (roleID, bool) {
