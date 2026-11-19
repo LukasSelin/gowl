@@ -68,6 +68,46 @@ func TestAreDisjointUnion(t *testing.T) {
 	}
 }
 
+// TestRepeatedOperandIsNotDisjointFromItself covers disjointness operands
+// written twice. They are a set, as owl.CanonicalAxiom treats them, so the
+// repeat adds nothing; reading it as A ⊓ A ⊑ ⊥ would empty A.
+func TestRepeatedOperandIsNotDisjointFromItself(t *testing.T) {
+	for _, body := range []string{
+		`DisjointUnion(:Pet :Cat :Cat :Dog)`,
+		`DisjointClasses(:Cat :Cat :Dog)`,
+	} {
+		t.Run(body, func(t *testing.T) {
+			c, cls := classify(t, body)
+			if !c.IsSatisfiable(cls("Cat")) {
+				t.Error("Cat is unsatisfiable")
+			}
+			assertDisjoint(t, c, cls("Cat"), cls("Dog"), true)
+		})
+	}
+}
+
+// A DisjointUnion with one distinct operand says the class equals it, which
+// is all EL, so nothing about it is unsupported.
+func TestDisjointUnionOfOneOperand(t *testing.T) {
+	c, cls := classify(t, `DisjointUnion(:Pet :Cat :Cat)`)
+	assertSub(t, c, cls, "Cat", "Pet")
+	assertSub(t, c, cls, "Pet", "Cat")
+	if got := c.Unsupported(); len(got) != 0 {
+		t.Errorf("Unsupported = %v, want none", got)
+	}
+}
+
+// An operand outside EL leaves the others' consequences in place, and the
+// axiom is reported once.
+func TestDisjointUnionWithNonELOperand(t *testing.T) {
+	c, cls := classify(t, `
+    DisjointUnion(:Pet :Cat ObjectUnionOf(:Dog :Fox))`)
+	assertSub(t, c, cls, "Cat", "Pet")
+	if got := c.Unsupported(); len(got) != 1 {
+		t.Errorf("Unsupported = %v, want the DisjointUnion once", got)
+	}
+}
+
 // TestAreDisjointFollowsFromOtherAxioms covers pairs that no DisjointClasses
 // names, directly or through superclasses. Closing the asserted pairs over the
 // taxonomy misses every one of these; only the reasoner finds them. Each case
@@ -149,6 +189,17 @@ func TestAreDisjointInconsistentOntology(t *testing.T) {
 
 	assertDisjoint(t, c, cls("A"), cls("B"), true)
 	assertDisjoint(t, c, owl.Thing, owl.Thing, true)
+
+	// A class the ontology never mentions is empty here too, and the other
+	// queries must say so rather than contradict AreDisjoint.
+	unknown := owl.Class("http://elsewhere.example/U")
+	assertDisjoint(t, c, unknown, unknown, true)
+	if c.IsSatisfiable(unknown) {
+		t.Error("an unknown class is satisfiable in an inconsistent ontology")
+	}
+	if !c.IsSubsumedBy(unknown, owl.Nothing) {
+		t.Error("an unknown class is not below owl:Nothing in an inconsistent ontology")
+	}
 }
 
 // TestAreDisjointMatchesReclassification checks AreDisjoint against the

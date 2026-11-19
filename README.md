@@ -388,7 +388,7 @@ c.UnsatisfiableClasses()                 // classes that cannot have instances
 c.IsCoherent()                           // ...and whether there are any
 c.InferredAxioms()                       // the result as ontology axioms
 c.Explain(margherita, cheesyPizza)       // the axioms behind an entailment
-c.Unsupported()                          // what it could not use
+c.Unsupported()                          // what it could not use in full
 ```
 
 The classic case: nothing says a Margherita is a cheesy pizza, but it is.
@@ -427,11 +427,11 @@ rather than dropped in silence, because an axiom skipped quietly makes a
 classification look complete when it is not:
 
 ```
-not classified (1 axiom outside OWL 2 EL)
+not used in full (1 axiom outside OWL 2 EL)
   ObjectPropertyRange(:hasTopping :Topping)
 
-note: axioms outside OWL 2 EL were skipped, so a subsumption that is not
-reported may still be entailed
+note: axioms outside OWL 2 EL were skipped or used only in part, so a
+subsumption that is not reported may still be entailed
 ```
 
 To check a finite set of facts against axioms, rather than infer from them,
