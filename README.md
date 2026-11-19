@@ -605,6 +605,8 @@ and `gowl diff` read them like any other.
 
 gowl keeps [`design/invariants.ofn`](design/invariants.ofn), the rules its own
 layers keep, and CI checks the code against them with godesign.
+[CONTRIBUTING.md](CONTRIBUTING.md) says what that means for a pull request, and
+how to plan a change first if you want to.
 
 ### Asking questions of Kubernetes' API types
 
