@@ -9,10 +9,11 @@
 //	    $M/k8s.io/api@v0.37.2 $M/k8s.io/apimachinery@v0.37.2/pkg/apis/meta/v1
 //	gowl classify -explain "batchv1:CronJob :RunsPods" k8s.ofn
 //
-// examples/self transcribes a module: a class per type, a property per field,
-// packages as individuals. Almost none of that is OWL 2 EL, so a reasoner has
-// nothing to do with it. This generator keeps only the structure a reasoner can
-// use, and leaves the questions to a hand-written file:
+// godesign's gocode (github.com/LukasSelin/godesign) transcribes a module: a
+// class per type, a property per field, packages as individuals. Almost none of
+// that is OWL 2 EL, so a reasoner has nothing to do with it. This generator
+// keeps only the structure a reasoner can use, and leaves the questions to a
+// hand-written file:
 //
 //   - Every exported named type is a class whose IRI is its pkg.go.dev URL, so
 //     core/v1.Event and events/v1.Event stay two classes. Each package gets a
