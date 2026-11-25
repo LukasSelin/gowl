@@ -73,7 +73,7 @@ func cmdClassify(args []string) int {
 		}
 	}
 	if u := c.Unsupported(); len(u) > 0 {
-		fmt.Printf("\nnot classified (%d %s outside OWL 2 EL)\n", len(u), plural(len(u), "axiom"))
+		fmt.Printf("\nnot used in full (%d %s outside OWL 2 EL)\n", len(u), plural(len(u), "axiom"))
 		for _, ax := range u {
 			fmt.Printf("  %s\n", o.Render(ax))
 		}
@@ -128,8 +128,8 @@ func runExplain(o *owl.Ontology, c *el.Classification, arg string, jsonOut bool)
 
 // incompleteNote is shared by the text and JSON output so the caveat cannot
 // drift between them.
-const incompleteNote = "axioms outside OWL 2 EL were skipped, so a subsumption that is " +
-	"not reported may still be entailed"
+const incompleteNote = "axioms outside OWL 2 EL were skipped or used only in part, so a " +
+	"subsumption that is not reported may still be entailed"
 
 // plural picks the singular or plural form of a word for a count.
 func plural(n int, word string) string {

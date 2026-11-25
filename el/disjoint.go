@@ -14,9 +14,18 @@ import "github.com/LukasSelin/gowl/owl"
 // As with [Classification.IsSubsumedBy], false is not proof that the classes
 // can overlap when [Classification.Unsupported] is non-empty.
 func (c *Classification) AreDisjoint(a, b owl.Class) bool {
-	q := conjunctionQuery{c: c, subs: make(map[conceptID]bool)}
-	q.add(c.idOrTop(a))
-	q.add(c.idOrTop(b))
+	ia, ib := c.idOrTop(a), c.idOrTop(b)
+	switch {
+	case c.subs[ia][bottom] || c.subs[ib][bottom]:
+		return true
+	case c.subs[ia][ib] || c.subs[ib][ia]:
+		// One is below the other, so a ⊓ b is the lower one, which is
+		// satisfiable. This covers a == b and an unknown class.
+		return false
+	}
+	q := conjunctionQuery{c: c, subs: make(map[conceptID]bool, len(c.subsList[ia])+len(c.subsList[ib]))}
+	q.add(ia)
+	q.add(ib)
 	return q.saturate()
 }
 
