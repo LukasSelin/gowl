@@ -383,11 +383,12 @@ c.IsSubsumedBy(margherita, cheesyPizza)  // entailed, even if never asserted
 c.SuperClassesOf(margherita)             // everything above it
 c.DirectSuperClassesOf(margherita)       // the taxonomy, transitively reduced
 c.EquivalentClassesOf(x)
+c.AreDisjoint(salami, mozzarella)        // entailed, inherited or derived
 c.UnsatisfiableClasses()                 // classes that cannot have instances
 c.IsCoherent()                           // ...and whether there are any
 c.InferredAxioms()                       // the result as ontology axioms
 c.Explain(margherita, cheesyPizza)       // the axioms behind an entailment
-c.Unsupported()                          // what it could not use
+c.Unsupported()                          // what it could not use in full
 ```
 
 The classic case: nothing says a Margherita is a cheesy pizza, but it is.
@@ -416,7 +417,9 @@ Class expressions: named classes, `owl:Thing`, `owl:Nothing`,
 `ObjectIntersectionOf`, `ObjectSomeValuesFrom`. Axioms: `SubClassOf`,
 `EquivalentClasses`, `DisjointClasses`, `ObjectPropertyDomain`,
 `SubObjectPropertyOf`, `EquivalentObjectProperties`,
-`TransitiveObjectProperty` and property chains.
+`TransitiveObjectProperty` and property chains. `DisjointUnion` is used in
+part: its operands are subclasses of its class and pairwise disjoint, but that
+they cover the class is outside EL, so it is still listed by `Unsupported()`.
 
 Everything else - nominals, `ObjectHasSelf`, data properties, property
 **ranges**, keys, and every non-EL constructor - is listed by `Unsupported()`
@@ -424,11 +427,11 @@ rather than dropped in silence, because an axiom skipped quietly makes a
 classification look complete when it is not:
 
 ```
-not classified (1 axiom outside OWL 2 EL)
+not used in full (1 axiom outside OWL 2 EL)
   ObjectPropertyRange(:hasTopping :Topping)
 
-note: axioms outside OWL 2 EL were skipped, so a subsumption that is not
-reported may still be entailed
+note: axioms outside OWL 2 EL were skipped or used only in part, so a
+subsumption that is not reported may still be entailed
 ```
 
 To check a finite set of facts against axioms, rather than infer from them,

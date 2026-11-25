@@ -6,8 +6,8 @@ import (
 	"github.com/LukasSelin/gowl/owl"
 )
 
-// Unsupported returns the axioms the classifier could not use, in the order
-// they appear in the ontology. An empty result means the whole ontology was
+// Unsupported returns the axioms the classifier could not use in full, in the
+// order they appear in the ontology. An empty result means the whole ontology was
 // classified; a non-empty one means the classification is sound but possibly
 // incomplete, so a subsumption it does not report is not evidence that the
 // subsumption fails.
@@ -38,7 +38,9 @@ func (c *Classification) IsSubsumedBy(sub, super owl.Class) bool {
 	}
 	a, ok := c.sym.lookup(sub)
 	if !ok {
-		return false
+		// An unknown class is below nothing in particular, unless nothing can
+		// have instances.
+		return !c.IsConsistent()
 	}
 	if c.subs[a][bottom] {
 		return true
@@ -51,14 +53,14 @@ func (c *Classification) IsSubsumedBy(sub, super owl.Class) bool {
 }
 
 // IsSatisfiable reports whether a class can have instances. An unknown class is
-// unconstrained, and so satisfiable.
+// unconstrained, and so satisfiable unless the ontology is inconsistent.
 func (c *Classification) IsSatisfiable(cl owl.Class) bool {
 	if cl == owl.Nothing {
 		return false
 	}
 	a, ok := c.sym.lookup(cl)
 	if !ok {
-		return true
+		return c.IsConsistent()
 	}
 	return !c.subs[a][bottom]
 }
